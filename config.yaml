@@ -1,0 +1,15 @@
+# Taynton Bay Capital — Macro Compass configuration
+
+dashboard:
+  title: "Taynton Bay Capital — Macro Compass"
+  subtitle: "Northstar Fund | Market Intelligence"
+  port: 8503
+  polaris_model: "claude-sonnet-4-6"
+  polaris_context_chars: 16000
+  # Auto-refresh intervals (ms)
+  refresh_market_hours: 900000      # 15 min during 9:30-16:00 ET
+  refresh_after_hours:  3600000     # 60 min otherwise
+
+data:
+  history_period: "2y"             # daily closes downloaded per ticker
+  freshness_warn_days: 1            # amber warning if data older than this

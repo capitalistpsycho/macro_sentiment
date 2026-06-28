@@ -1,0 +1,13 @@
+# Secrets & keys
+.env
+.streamlit/secrets.toml
+
+# Data & outputs
+cache/*.db
+output/*
+!output/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
