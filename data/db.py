@@ -13,15 +13,38 @@ tables double as a time series for the sentiment-trend charts.
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 from contextlib import contextmanager
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("NORTHSTAR_MACRO_DB", os.path.join(_ROOT, "cache", "macro.db"))
 
+# A committed snapshot of macro.db. On an ephemeral host (e.g. Streamlit Cloud)
+# the working cache under cache/ starts empty on every boot, so we restore this
+# seed once per process to ship history. Refresh it with:
+#   cp cache/macro.db data/seed_macro.db && git commit
+_SEED_PATH = os.path.join(_ROOT, "data", "seed_macro.db")
+_seeded = False
+
+
+def _ensure_db_file() -> None:
+    """Restore the committed seed into the cache path if no live DB exists yet."""
+    global _seeded
+    if _seeded:
+        return
+    _seeded = True
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    if not os.path.exists(DB_PATH) and os.path.exists(_SEED_PATH):
+        try:
+            shutil.copy2(_SEED_PATH, DB_PATH)
+        except Exception:
+            pass
+
 
 @contextmanager
 def get_db():
+    _ensure_db_file()
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
