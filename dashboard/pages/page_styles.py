@@ -12,11 +12,17 @@ from dashboard.page_data import load_metrics
 from data import store
 
 PERIODS = [("return_5d", "1W"), ("return_1m", "1M"), ("return_3m", "3M"),
-           ("return_6m", "6M"), ("return_1y", "1Y")]
+           ("return_6m", "6M"), ("return_1y", "1Y"), ("return_ytd", "YTD")]
 
-STYLES = [("IWF", "Growth"), ("IWD", "Value"), ("MTUM", "Momentum"),
-          ("QUAL", "Quality"), ("USMV", "Low Vol"), ("IWM", "Small Cap"),
-          ("IWB", "Large Cap"), ("RSP", "Equal Weight")]
+# Split so the visual read is clean: true factors vs market-cap / size buckets.
+FACTOR_STYLES = [("IWF", "Growth"), ("IWD", "Value"), ("MTUM", "Momentum"),
+                 ("QUAL", "Quality"), ("USMV", "Low Vol")]
+
+MARKET_CAP = [("IWM", "Small Cap"), ("IWB", "Large Cap"),
+              ("SPY", "S&P 500 (Cap Wt)"), ("RSP", "Equal Weight")]
+
+# Combined list still drives the "current style read" recommendation box.
+STYLES = FACTOR_STYLES + MARKET_CAP
 
 FACTORS = [("MTUM", "Momentum"), ("USMV", "Low Volatility"), ("QUAL", "Quality"),
            ("IWF", "Growth"), ("IWD", "Value"), ("IWM", "Small Cap")]
@@ -46,13 +52,22 @@ def _rolling_rel(num, den, window=63):
 def render(ctx: dict) -> None:
     m = load_metrics()
 
-    # ── Style heatmap ──────────────────────────────────────────────────────
-    st.markdown(section_header("STYLE PERFORMANCE HEATMAP"), unsafe_allow_html=True)
-    st.markdown(perf_heatmap_html(_heat_rows(m, STYLES), PERIODS),
+    # ── Factor/style heatmap ───────────────────────────────────────────────
+    st.markdown(section_header("FACTOR / STYLE PERFORMANCE HEATMAP"), unsafe_allow_html=True)
+    st.markdown(perf_heatmap_html(_heat_rows(m, FACTOR_STYLES), PERIODS),
                 unsafe_allow_html=True)
     st.markdown(f'<div style="color:{GREY};font-size:11px;margin-top:6px">'
                 f'Green = stronger return, red = weaker, across each horizon. '
-                f'The single best read on what the market is rewarding right now.</div>',
+                f'What the market is rewarding at the factor level.</div>',
+                unsafe_allow_html=True)
+
+    # ── Market-cap / size heatmap ──────────────────────────────────────────
+    st.markdown(section_header("MARKET-CAP / SIZE PERFORMANCE HEATMAP"), unsafe_allow_html=True)
+    st.markdown(perf_heatmap_html(_heat_rows(m, MARKET_CAP), PERIODS),
+                unsafe_allow_html=True)
+    st.markdown(f'<div style="color:{GREY};font-size:11px;margin-top:6px">'
+                f'Size leadership: small vs large, and cap-weighted (SPY) vs '
+                f'equal-weight (RSP) as a breadth tell.</div>',
                 unsafe_allow_html=True)
 
     # ── Growth vs Value ────────────────────────────────────────────────────

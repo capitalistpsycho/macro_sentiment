@@ -19,15 +19,42 @@ from data.db import init_db, upsert_daily_prices
 
 logger = logging.getLogger(__name__)
 
-# Trading-day windows for the return horizons
+# Short-horizon returns stay on trading-day counts (1 session / 1 week).
 _WINDOWS = {
     "return_1d":  1,
     "return_5d":  5,
-    "return_1m":  21,
-    "return_3m":  63,
-    "return_6m":  126,
-    "return_1y":  252,
 }
+
+# Longer horizons are anchored to actual calendar dates so they line up with how
+# Koyfin/Bloomberg report them (1M = same day last month, not 21 sessions ago).
+_CAL_OFFSETS = {
+    "return_1m": pd.DateOffset(months=1),
+    "return_3m": pd.DateOffset(months=3),
+    "return_6m": pd.DateOffset(months=6),
+    "return_1y": pd.DateOffset(years=1),
+}
+
+
+def _cal_return(close: pd.Series, offset: pd.DateOffset) -> pd.Series:
+    """Return %, anchored to the last close on/before (each date − offset)."""
+    idx = close.index
+    vals = close.to_numpy()
+    targets = idx - offset
+    # Position of the last index at or before each target (−1 if before start).
+    pos = idx.searchsorted(targets, side="right") - 1
+    base = np.where(pos >= 0, vals[pos.clip(min=0)], np.nan)
+    return (vals / base - 1.0) * 100.0
+
+
+def _ytd_return(close: pd.Series) -> pd.Series:
+    """Return % since the last close of the prior calendar year (Dec 31 base)."""
+    years = close.index.year
+    # Base = last close on/before Dec 31 of the previous year, per row.
+    bases = {y: close.loc[:f"{y - 1}-12-31"].iloc[-1]
+             if not close.loc[:f"{y - 1}-12-31"].empty else np.nan
+             for y in set(years)}
+    base = np.array([bases[y] for y in years], dtype=float)
+    return (close.to_numpy() / base - 1.0) * 100.0
 
 
 def normalize_yield(ticker: str, value: float | None) -> float | None:
@@ -90,6 +117,9 @@ def compute_metrics(close: pd.Series) -> pd.DataFrame:
     out = pd.DataFrame({"close": close})
     for col, n in _WINDOWS.items():
         out[col] = (close / close.shift(n) - 1.0) * 100.0
+    for col, off in _CAL_OFFSETS.items():
+        out[col] = _cal_return(close, off)
+    out["return_ytd"] = _ytd_return(close)
     out["ma20"]  = close.rolling(20).mean()
     out["ma50"]  = close.rolling(50).mean()
     out["ma200"] = close.rolling(200).mean()
@@ -109,7 +139,7 @@ def _to_db_rows(ticker: str, metrics: pd.DataFrame) -> list[tuple]:
         rows.append((
             ticker, dt.strftime("%Y-%m-%d"), g("close"),
             g("return_1d"), g("return_5d"), g("return_1m"),
-            g("return_3m"), g("return_6m"), g("return_1y"),
+            g("return_3m"), g("return_6m"), g("return_1y"), g("return_ytd"),
             g("ma20"), g("ma50"), g("ma200"), g("rsi14"), g("vol20d"),
         ))
     return rows

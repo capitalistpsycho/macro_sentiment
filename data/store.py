@@ -12,7 +12,8 @@ from data.db import get_db
 
 _METRIC_COLS = [
     "close", "return_1d", "return_5d", "return_1m", "return_3m",
-    "return_6m", "return_1y", "ma20", "ma50", "ma200", "rsi14", "vol20d",
+    "return_6m", "return_1y", "return_ytd", "ma20", "ma50", "ma200",
+    "rsi14", "vol20d",
 ]
 
 

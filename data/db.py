@@ -68,6 +68,7 @@ def init_db() -> None:
             return_3m  REAL,
             return_6m  REAL,
             return_1y  REAL,
+            return_ytd REAL,
             ma20       REAL,
             ma50       REAL,
             ma200      REAL,
@@ -134,14 +135,18 @@ def init_db() -> None:
             note      TEXT
         );
         """)
+        # Migrations for DBs created before a column existed (e.g. the seed).
+        cols = {r[1] for r in c.execute("PRAGMA table_info(daily_prices)").fetchall()}
+        if "return_ytd" not in cols:
+            c.execute("ALTER TABLE daily_prices ADD COLUMN return_ytd REAL")
 
 
 # ── Writers ───────────────────────────────────────────────────────────────────
 
 _PRICE_COLS = [
     "ticker", "date", "close", "return_1d", "return_5d", "return_1m",
-    "return_3m", "return_6m", "return_1y", "ma20", "ma50", "ma200",
-    "rsi14", "vol20d",
+    "return_3m", "return_6m", "return_1y", "return_ytd", "ma20", "ma50",
+    "ma200", "rsi14", "vol20d",
 ]
 
 

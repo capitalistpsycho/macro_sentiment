@@ -19,9 +19,22 @@ logger = logging.getLogger(__name__)
 
 FRED_BASE = "https://api.stlouisfed.org/fred"
 
+# FOMC is handled separately: FRED release 101 ("FOMC Press Release") logs a
+# release date for *every* calendar day, so it can't be used to find the rate
+# decision. Instead we hardcode the Fed's published meeting schedule (the
+# decision is announced on the second day). Update once a year when the Fed
+# publishes the next year's dates.
+FOMC_DECISION_DATES: list[str] = [
+    # 2026 (https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)
+    "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17",
+    "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09",
+    # 2027 (tentative — verify when the Fed confirms)
+    "2027-01-27", "2027-03-17", "2027-04-28", "2027-06-16",
+    "2027-07-28", "2027-09-22", "2027-11-03", "2027-12-15",
+]
+
 # release_id -> (label, impact, context_series, context_fmt)
 RELEASES: dict[int, tuple] = {
-    101: ("FOMC Rate Decision",      "high",   None,       None),
     50:  ("Jobs Report (NFP)",       "high",   "UNRATE",   "Unemp {:.1f}%"),
     10:  ("CPI Inflation",           "high",   "CPILFESL", None),
     54:  ("PCE / Personal Income",   "high",   None,       None),
@@ -72,6 +85,18 @@ def upcoming_events(days: int = 21) -> list[dict]:
         return []
     today = date.today()
     out = []
+
+    # FOMC from the hardcoded schedule (nearest upcoming decision in window).
+    for d in FOMC_DECISION_DATES:
+        try:
+            du = (datetime.strptime(d, "%Y-%m-%d").date() - today).days
+        except ValueError:
+            continue
+        if 0 <= du <= days:
+            out.append({"date": d, "label": "FOMC Rate Decision",
+                        "impact": "high", "days_until": du, "last": None})
+            break
+
     for rid, (label, impact, cser, cfmt) in RELEASES.items():
         try:
             dts = _next_dates(rid, key)
