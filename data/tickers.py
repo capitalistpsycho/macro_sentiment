@@ -96,6 +96,36 @@ COMMODITIES = [
     ("USO",  "Oil ETF",       "USD"),
     ("COPX", "Copper Miners", "USD"),
     ("DJP",  "Broad Commod.", "USD"),
+    # Uranium — no clean spot future on yfinance; SPUT tracks physical spot,
+    # the ETFs/Cameco track the equity complex.
+    ("U-UN.TO", "Uranium (SPUT spot)", "CAD"),
+    ("URA",  "Uranium Miners",   "USD"),
+    ("URNM", "Uranium Pure-Play", "USD"),
+    ("CCJ",  "Cameco",           "USD"),
+]
+
+# ── Sector → industry-group ETFs (drilldown on the Sectors page) ──────────────
+# Maps each US sector SPDR to the liquid industry ETFs that sit beneath it.
+INDUSTRY_GROUPS: dict[str, list[tuple[str, str]]] = {
+    "XLK":  [("SMH", "Semiconductors"), ("IGV", "Software"),
+             ("SKYY", "Cloud"), ("CIBR", "Cybersecurity")],
+    "XLF":  [("KRE", "Regional Banks"), ("KBE", "Banks"),
+             ("IAI", "Broker-Dealers"), ("KIE", "Insurance")],
+    "XLE":  [("XOP", "Oil & Gas E&P"), ("OIH", "Oil Services"),
+             ("AMLP", "Midstream / MLPs")],
+    "XLV":  [("IBB", "Biotech"), ("IHI", "Medical Devices"), ("IHF", "Providers")],
+    "XLI":  [("ITA", "Aerospace & Defense"), ("IYT", "Transports"), ("JETS", "Airlines")],
+    "XLY":  [("XRT", "Retail"), ("XHB", "Homebuilders")],
+    "XLB":  [("GDX", "Gold Miners"), ("COPX", "Copper Miners"),
+             ("LIT", "Lithium"), ("MOO", "Agribusiness")],
+}
+
+# Flat (ticker, label, ccy) list so the industry ETFs get downloaded like any
+# other group. Built from INDUSTRY_GROUPS to keep one source of truth.
+SECTOR_INDUSTRY = [
+    (tk, lbl, "USD")
+    for etfs in INDUSTRY_GROUPS.values()
+    for tk, lbl in etfs
 ]
 
 FX = [
@@ -107,14 +137,15 @@ FX = [
 ]
 
 GROUPS = {
-    "equity":       EQUITY_BENCHMARKS,
-    "style":        STYLE_FACTOR,
-    "sector_us":    SECTOR_US,
-    "sector_ca":    SECTOR_CA,
-    "regional":     REGIONAL,
-    "fixed_income": FIXED_INCOME,
-    "commodities":  COMMODITIES,
-    "fx":           FX,
+    "equity":          EQUITY_BENCHMARKS,
+    "style":           STYLE_FACTOR,
+    "sector_us":       SECTOR_US,
+    "sector_ca":       SECTOR_CA,
+    "sector_industry": SECTOR_INDUSTRY,
+    "regional":        REGIONAL,
+    "fixed_income":    FIXED_INCOME,
+    "commodities":     COMMODITIES,
+    "fx":              FX,
 }
 
 # ── Lookups ───────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ from dashboard.styles import (
 )
 from dashboard.components import perf_heatmap_html, line_chart, pct_color, fmt_pct, fmt_num
 from dashboard.page_data import load_metrics
-from data import store
+from data import store, tickers as T
 
 PERIODS = [("return_5d", "1W"), ("return_1m", "1M"), ("return_3m", "3M"),
            ("return_6m", "6M"), ("return_1y", "1Y")]
@@ -139,6 +139,23 @@ def render(ctx: dict) -> None:
             f'<td style="text-align:center"><span style="color:{col};font-weight:600;font-size:11px">{lbl}</span></td></tr>')
     st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
                 f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+
+    # ── Industry-group drilldown ───────────────────────────────────────────
+    st.markdown(section_header("SECTOR → INDUSTRY-GROUP DRILLDOWN"), unsafe_allow_html=True)
+    st.caption("Expand a sector to see the liquid industry ETFs beneath it — where the leadership "
+               "inside a sector actually sits. Sorted by 3-month return.")
+    for tk, name in SECTORS_US:
+        industries = T.INDUSTRY_GROUPS.get(tk)
+        if not industries:
+            continue
+        sec = m.get(tk, {})
+        summary = (f"{name}  ·  1M {fmt_pct(sec.get('return_1m'))}  ·  "
+                   f"3M {fmt_pct(sec.get('return_3m'))}")
+        with st.expander(summary):
+            ranked = sorted(industries,
+                            key=lambda it: (m.get(it[0], {}).get("return_3m") or -1e9),
+                            reverse=True)
+            st.markdown(perf_heatmap_html(_heat_rows(m, ranked), PERIODS), unsafe_allow_html=True)
 
     # ── Relative strength tool ─────────────────────────────────────────────
     st.markdown(section_header("RELATIVE STRENGTH — SECTOR vs SECTOR"), unsafe_allow_html=True)

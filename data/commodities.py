@@ -16,10 +16,15 @@ def performance_table() -> pd.DataFrame:
     for tk, name in spot:
         row = m.get(tk, {})
         s = store.series(tk)
-        hi = float(s["close"].max()) if not s.empty else None
+        # True 52-week high (last ~252 trading days), not the full 2y window.
+        hi = float(s["close"].tail(252).max()) if not s.empty else None
         last = row.get("close")
         from_hi = ((last / hi - 1) * 100) if (hi and last) else None
-        ytd = _ytd_return(s) if not s.empty else None
+        # Prefer the engine's YTD (Dec-31 base, consistent with the rest of the
+        # dashboard); fall back to a local recompute if the metric is missing.
+        ytd = row.get("return_ytd")
+        if ytd is None:
+            ytd = _ytd_return(s) if not s.empty else None
         rows.append({
             "ticker": tk, "name": name, "price": last,
             "return_1d": row.get("return_1d"), "return_1m": row.get("return_1m"),
@@ -29,14 +34,15 @@ def performance_table() -> pd.DataFrame:
 
 
 def _ytd_return(s: pd.DataFrame) -> float | None:
+    """YTD % from the last close of the prior calendar year (Dec-31 base)."""
     if s.empty:
         return None
     s = s.copy()
-    yr = s["date"].dt.year.max()
-    jan = s[s["date"].dt.year == yr]
-    if jan.empty:
+    yr = int(s["date"].dt.year.max())
+    prev = s[s["date"] <= f"{yr - 1}-12-31"]
+    if prev.empty:
         return None
-    start = float(jan["close"].iloc[0])
+    start = float(prev["close"].iloc[-1])
     last = float(s["close"].iloc[-1])
     return (last / start - 1) * 100 if start else None
 

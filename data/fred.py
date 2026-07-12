@@ -152,41 +152,101 @@ REGIME_DESC = {
 }
 
 
+def _quadrant(growth_up: bool, infl_up: bool) -> str:
+    if growth_up and not infl_up:   return "GOLDILOCKS"
+    if growth_up and infl_up:       return "REFLATION"
+    if not growth_up and infl_up:   return "STAGFLATION"
+    return "DEFLATION RISK"
+
+
+def _clamp(x: float, lo: float = -1.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, x))
+
+
+def _weighted(parts: list[tuple[float | None, float]]) -> float | None:
+    """Weighted average over the parts whose value is not None (reweighted)."""
+    live = [(v, w) for v, w in parts if v is not None]
+    if not live:
+        return None
+    wsum = sum(w for _, w in live)
+    return sum(v * w for v, w in live) / wsum if wsum else None
+
+
 def macro_nowcast(as_of: str | None = None) -> dict:
-    """Real growth x inflation regime from FRED. Falls back to {} if no data."""
+    """Real growth x inflation regime from FRED. Falls back to {} if no data.
+
+    Beyond the hard quadrant label, this scores each axis on a continuous
+    [-1, +1] scale, derives a conviction level from how far the *pivotal* axis
+    sits from its zero line, and names the secondary regime the call would flip
+    to if that axis crossed — so a borderline read is shown as borderline.
+    """
     cfnai = series("CFNAI", as_of=as_of)
     core = series("CPILFESL", as_of=as_of)
     if cfnai.empty or core.empty:
         return {}
 
-    # Growth: CFNAI is a deviation-from-trend nowcast (0 = trend growth).
+    # ── Growth axis ───────────────────────────────────────────────────────────
+    # CFNAI is a deviation-from-trend nowcast (0 = trend growth).
     cfnai_ma3 = float(cfnai.tail(3).mean())
     cfnai_dir = float(cfnai.tail(3).mean() - cfnai.tail(6).head(3).mean()) if len(cfnai) >= 6 else 0.0
     indpro_yoy = yoy("INDPRO", as_of=as_of)
     claims_chg = _chg("ICSA", 13, as_of=as_of)  # vs ~3 months ago (weekly series)
-    growth_up = cfnai_ma3 > 0 or (cfnai_ma3 > -0.2 and cfnai_dir > 0)
 
-    # Inflation: core CPI YoY level + acceleration.
+    # Continuous growth score in [-1, 1]. CFNAI level carries most of the weight;
+    # its direction, industrial-production YoY and jobless-claims trend confirm.
+    growth_score = _weighted([
+        (_clamp(cfnai_ma3 / 0.7), 0.40),                     # ±0.7 CFNAI ≈ strong signal
+        (_clamp(cfnai_dir / 0.5), 0.20),                     # 3m-over-3m acceleration
+        (_clamp(indpro_yoy / 3.0) if indpro_yoy is not None else None, 0.25),
+        (_clamp(-claims_chg / 100000) if claims_chg is not None else None, 0.15),
+    ]) or 0.0
+    growth_up = growth_score > 0
+
+    # ── Inflation axis ────────────────────────────────────────────────────────
     core_yoy = yoy("CPILFESL", as_of=as_of)
     core_yoy_6m_ago = None
     if len(core) >= 19:
         core_yoy_6m_ago = round((core.iloc[-7] / core.iloc[-19] - 1) * 100, 2)
-    accel = (core_yoy is not None and core_yoy_6m_ago is not None
-             and core_yoy > core_yoy_6m_ago)
     breakeven = latest("T10YIE", as_of=as_of)
-    infl_up = bool(accel or (core_yoy is not None and core_yoy > 3.0 and not (
-        core_yoy_6m_ago is not None and core_yoy < core_yoy_6m_ago)))
+    accel_pp = (core_yoy - core_yoy_6m_ago) if (core_yoy is not None and core_yoy_6m_ago is not None) else None
 
-    if growth_up and not infl_up:   regime = "GOLDILOCKS"
-    elif growth_up and infl_up:     regime = "REFLATION"
-    elif not growth_up and infl_up: regime = "STAGFLATION"
-    else:                           regime = "DEFLATION RISK"
+    # Continuous inflation score in [-1, 1]: level vs the 2% target + 6m
+    # acceleration + market-implied breakeven. Positive = inflationary.
+    inflation_score = _weighted([
+        (_clamp((core_yoy - 2.0) / 2.0) if core_yoy is not None else None, 0.45),   # 2%→0, 4%→+1
+        (_clamp(accel_pp / 1.0) if accel_pp is not None else None, 0.35),           # ±1pp swing ≈ full
+        (_clamp((breakeven - 2.3) / 1.0) if breakeven is not None else None, 0.20),
+    ]) or 0.0
+    infl_up = inflation_score > 0
+
+    regime = _quadrant(growth_up, infl_up)
+
+    # ── Conviction + secondary call ───────────────────────────────────────────
+    # The label flips when the axis nearest zero crosses it, so conviction is
+    # governed by that pivotal axis; the secondary regime flips its sign.
+    pivot = "growth" if abs(growth_score) <= abs(inflation_score) else "inflation"
+    margin = min(abs(growth_score), abs(inflation_score))
+    conviction = round(min(100.0, margin / 0.35 * 100), 0)   # |pivot|≥0.35 ⇒ full conviction
+    if conviction >= 66:   conviction_label = "High"
+    elif conviction >= 33: conviction_label = "Moderate"
+    else:                  conviction_label = "Low"
+    if pivot == "growth":
+        regime_secondary = _quadrant(not growth_up, infl_up)
+    else:
+        regime_secondary = _quadrant(growth_up, not infl_up)
 
     return {
         "regime": regime,
         "regime_desc": REGIME_DESC[regime],
+        "regime_secondary": regime_secondary,
+        "regime_secondary_desc": REGIME_DESC[regime_secondary],
         "growth_up": growth_up,
         "inflation_up": infl_up,
+        "growth_score": round(growth_score, 2),
+        "inflation_score": round(inflation_score, 2),
+        "conviction": conviction,
+        "conviction_label": conviction_label,
+        "pivot_axis": pivot,
         "cfnai_ma3": round(cfnai_ma3, 2),
         "cfnai_dir": round(cfnai_dir, 2),
         "indpro_yoy": indpro_yoy,

@@ -66,3 +66,65 @@ def regime_backtest(regime_col: str = "regime") -> dict:
     out["_order"] = sorted(counts, key=lambda r: counts[r], reverse=True)
     out["_days"] = counts
     return out
+
+
+# ── Style / factor / region performance conditioned on the macro regime ───────
+
+REGIME_UNIVERSES = {
+    "Styles / Factors": [
+        ("IWF", "Growth"), ("IWD", "Value"), ("MTUM", "Momentum"),
+        ("QUAL", "Quality"), ("USMV", "Low Vol"), ("IWM", "Small Cap"),
+    ],
+    "Regions": [
+        ("EEM", "Emerging Mkts"), ("VEA", "Developed ex-US"), ("VGK", "Europe"),
+        ("EWJ", "Japan"), ("MCHI", "China"), ("EWC", "Canada"), ("^GSPTSE", "S&P/TSX"),
+    ],
+}
+
+
+def regime_performance(universe: list[tuple[str, str]], regime_col: str = "macro_regime",
+                       horizon: int = 21, benchmark: str = "SPY") -> dict:
+    """Per-regime forward performance of each instrument in ``universe``.
+
+    For every regime in the signal history, measures each instrument's average
+    forward ``horizon``-day return, its *excess* over ``benchmark`` (the more
+    telling number — it strips out the market's general direction in that
+    regime) and its hit rate. Overlapping daily windows ⇒ descriptive, not iid.
+
+    Returns {regime: {label: {mean, excess, hit, n}}, "_order", "_days", "_horizon"}.
+    """
+    ms = store.signal_history("macro_signals")
+    if ms.empty or regime_col not in ms.columns:
+        return {}
+    ms = ms[["date", regime_col]].dropna()
+    ms = ms.set_index(pd.to_datetime(ms["date"]))
+
+    bench_fwd = _forward_returns(benchmark, horizon)
+    fwd = {tk: _forward_returns(tk, horizon) for tk, _ in universe}
+
+    out: dict = {}
+    counts: dict = {}
+    for regime, grp in ms.groupby(regime_col):
+        dates = grp.index
+        counts[regime] = len(dates)
+        out[regime] = {}
+        for tk, label in universe:
+            f = fwd.get(tk)
+            vals = f.reindex(dates).dropna() if f is not None and not f.empty else pd.Series(dtype=float)
+            if len(vals) < 3:
+                out[regime][label] = {"mean": None, "excess": None, "hit": None, "n": int(len(vals))}
+                continue
+            common = vals.index.intersection(bench_fwd.index)
+            excess = None
+            if len(common) >= 3:
+                excess = float((vals.reindex(common) - bench_fwd.reindex(common)).mean())
+            out[regime][label] = {
+                "mean": round(float(vals.mean()), 2),
+                "excess": round(excess, 2) if excess is not None else None,
+                "hit": round(float((vals > 0).mean()) * 100, 0),
+                "n": int(len(vals)),
+            }
+    out["_order"] = sorted(counts, key=lambda r: counts[r], reverse=True)
+    out["_days"] = counts
+    out["_horizon"] = horizon
+    return out

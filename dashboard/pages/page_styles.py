@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, CARD, BORDER, section_header
+from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, CARD, BORDER, BG, section_header
 from dashboard.components import (
     perf_heatmap_html, line_chart, pct_color, fmt_pct, fmt_num,
 )
-from dashboard.page_data import load_metrics
-from data import store
+from dashboard.page_data import load_metrics, load_signals, load_regime_performance
+from data import store, backtest as bt
 
 PERIODS = [("return_5d", "1W"), ("return_1m", "1M"), ("return_3m", "3M"),
            ("return_6m", "6M"), ("return_1y", "1Y"), ("return_ytd", "YTD")]
@@ -161,3 +161,74 @@ def render(ctx: dict) -> None:
         f'<div style="color:{GREY};font-size:12px;margin-top:6px">Supporting evidence: '
         f'{" · ".join(evidence) if evidence else "data not available"}.</div></div>',
         unsafe_allow_html=True)
+
+    # ── Regime playbook — how styles/regions have performed by macro regime ──
+    _regime_playbook()
+
+
+def _excess_color(x: float | None) -> str:
+    """Diverging shade for excess-return cells (green outperform / red underperform)."""
+    if x is None:
+        return "#141414"
+    v = max(-3.0, min(3.0, x)) / 3.0  # scale ±3pp to full intensity
+    if v >= 0:
+        return f"rgba(34,197,94,{0.12 + 0.45 * v:.2f})"
+    return f"rgba(239,68,68,{0.12 + 0.45 * abs(v):.2f})"
+
+
+def _regime_playbook() -> None:
+    st.markdown(section_header("REGIME PLAYBOOK — PERFORMANCE BY MACRO REGIME"),
+                unsafe_allow_html=True)
+    sig = load_signals()
+    current = sig.get("macro_regime")
+    c1, c2 = st.columns([1.3, 1])
+    with c1:
+        universe = st.radio("Universe", ["Styles / Factors", "Regions"],
+                            horizontal=True, key="rp_uni", label_visibility="collapsed")
+    with c2:
+        hlabel = st.radio("Horizon", ["1M", "3M"], horizontal=True, key="rp_h",
+                          label_visibility="collapsed")
+    horizon = 21 if hlabel == "1M" else 63
+    data = load_regime_performance(universe, horizon)
+    if not data or not data.get("_order"):
+        st.info("Not enough regime history yet to build the playbook.")
+        return
+
+    regimes = data["_order"]
+    days = data.get("_days", {})
+    labels = [lbl for _, lbl in bt.REGIME_UNIVERSES[universe]]
+
+    # Header row: one column per regime, current regime highlighted.
+    head = '<tr><th style="text-align:left">Instrument</th>'
+    for reg in regimes:
+        hot = reg == current
+        bd = GOLD if hot else BORDER
+        tag = ' ◀ now' if hot else ''
+        head += (f'<th style="text-align:center;border-bottom:2px solid {bd};'
+                 f'color:{GOLD if hot else GREY};font-size:10px;min-width:96px">'
+                 f'{reg}{tag}<br><span style="color:#555;font-weight:400">n={days.get(reg,0)}d</span></th>')
+    head += '</tr>'
+
+    body = ""
+    for lbl in labels:
+        body += f'<tr><td style="font-weight:600;white-space:nowrap">{lbl}</td>'
+        for reg in regimes:
+            d = data[reg].get(lbl, {})
+            ex, mean, hit = d.get("excess"), d.get("mean"), d.get("hit")
+            bg = _excess_color(ex)
+            border = f"2px solid {GOLD}" if reg == current else f"1px solid {BG}"
+            ex_txt = "—" if ex is None else f"{ex:+.1f}"
+            sub = "" if mean is None else f'<span style="color:{GREY};font-size:9px">{fmt_pct(mean)} · {hit:.0f}% up</span>'
+            body += (f'<td style="text-align:center;background:{bg};border:{border};'
+                     f'padding:5px 4px"><span class="mono" style="color:{WHITE};font-size:12px">'
+                     f'{ex_txt}</span><br>{sub}</td>')
+        body += '</tr>'
+
+    st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+    hist = store.signal_history("macro_signals")
+    since = hist["date"].min().date() if not hist.empty else "—"
+    st.caption(f"Cells = average excess {hlabel} forward return vs SPY when the macro regime was "
+               f"active (small text = absolute return · % of windows positive). Green = outperformed, "
+               f"red = lagged. Gold column = today's regime ({current or '—'}). History since {since}. "
+               f"Forward windows overlap → read as descriptive tendencies, not an iid backtest.")

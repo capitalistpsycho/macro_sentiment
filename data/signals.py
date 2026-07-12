@@ -274,6 +274,10 @@ def compute_signals(metrics: dict | None = None, as_of: str | None = None) -> di
         macro_regime = _macro_regime(m, curve_spread)
         macro_regime_desc = MACRO_REGIME_DESC.get(macro_regime, "")
         macro_source = "proxy"
+    macro_conviction = nowcast.get("conviction")
+    macro_conviction_label = nowcast.get("conviction_label")
+    macro_regime_secondary = nowcast.get("regime_secondary")
+    macro_regime_secondary_desc = nowcast.get("regime_secondary_desc")
 
     dims = {
         "equity_momentum": _equity_momentum(m),
@@ -313,6 +317,10 @@ def compute_signals(metrics: dict | None = None, as_of: str | None = None) -> di
         "regime_desc": REGIME_DESC.get(regime, ""),
         "macro_regime": macro_regime,
         "macro_regime_desc": macro_regime_desc,
+        "macro_regime_secondary": macro_regime_secondary,
+        "macro_regime_secondary_desc": macro_regime_secondary_desc,
+        "macro_conviction": macro_conviction,
+        "macro_conviction_label": macro_conviction_label,
         "macro_source": macro_source,
         "macro_nowcast": nowcast,
         "financial_conditions": fci,

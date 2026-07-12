@@ -228,6 +228,7 @@ def render(ctx: dict) -> None:
         st.markdown(regime_badge(sig["macro_regime"], sig["macro_regime_desc"]),
                     unsafe_allow_html=True)
         if sig.get("macro_source") == "FRED":
+            st.markdown(_conviction_box(sig, nc), unsafe_allow_html=True)
             st.markdown(_quadrant_grid(sig["macro_regime"]), unsafe_allow_html=True)
     with q2:
         if nc:
@@ -240,6 +241,55 @@ def render(ctx: dict) -> None:
     else:
         st.caption("FRED macro data unavailable — showing the ETF-momentum proxy regime. "
                    "Set FRED_API_KEY to enable the real growth × inflation nowcast.")
+
+
+def _axis_bar(label: str, score: float | None, pos_word: str, neg_word: str) -> str:
+    """Bipolar -1..+1 axis bar centred at zero."""
+    s = 0.0 if score is None else max(-1.0, min(1.0, score))
+    pct = abs(s) * 50  # half-width
+    col = GREEN if s > 0 else RED if s < 0 else GREY
+    side = "left:50%" if s >= 0 else f"right:50%"
+    val = "—" if score is None else f"{score:+.2f}"
+    return (
+        f'<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;'
+        f'font-size:11px;margin-bottom:2px"><span style="color:{GREY}">{label}</span>'
+        f'<span style="font-family:JetBrains Mono,monospace;color:{col}">{val}</span></div>'
+        f'<div style="position:relative;background:#0f0f0f;border-radius:4px;height:8px">'
+        f'<div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:{BORDER}"></div>'
+        f'<div style="position:absolute;{side};top:0;height:8px;width:{pct}%;background:{col};'
+        f'border-radius:4px"></div></div>'
+        f'<div style="display:flex;justify-content:space-between;color:#555;font-size:9px;'
+        f'margin-top:1px"><span>{neg_word}</span><span>{pos_word}</span></div></div>')
+
+
+def _conviction_box(sig: dict, nc: dict) -> str:
+    conv = sig.get("macro_conviction")
+    conv_lbl = sig.get("macro_conviction_label") or "—"
+    sec = sig.get("macro_regime_secondary")
+    pivot = nc.get("pivot_axis", "")
+    conv_col = GREEN if (conv or 0) >= 66 else AMBER if (conv or 0) >= 33 else RED
+    bar_w = 0 if conv is None else conv
+    g = _axis_bar("Growth", nc.get("growth_score"), "above trend", "below trend")
+    i = _axis_bar("Inflation", nc.get("inflation_score"), "rising", "easing")
+    # Secondary call — surface prominently when the pivotal axis is near its line.
+    sec_html = ""
+    if sec and sec != sig.get("macro_regime") and (conv or 100) < 66:
+        sec_html = (
+            f'<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e1e1e;'
+            f'font-size:11px;color:{GREY}">Borderline on the <b style="color:{AMBER}">{pivot}</b> '
+            f'axis — if it turns, regime flips to '
+            f'<b style="color:{AMBER}">{sec}</b>.</div>')
+    return (
+        f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;'
+        f'padding:12px 16px;margin-top:10px">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'
+        f'<span style="color:{GOLD};font-size:10px;font-weight:600;text-transform:uppercase;'
+        f'letter-spacing:1px">Conviction</span>'
+        f'<span style="font-family:JetBrains Mono,monospace;color:{conv_col};font-size:13px">'
+        f'{"—" if conv is None else f"{conv:.0f}/100"} · {conv_lbl}</span></div>'
+        f'<div style="background:#0f0f0f;border-radius:4px;height:6px;margin-bottom:4px">'
+        f'<div style="width:{bar_w}%;background:{conv_col};height:6px;border-radius:4px"></div></div>'
+        f'{g}{i}{sec_html}</div>')
 
 
 _QUAD_CELLS = [  # display order: top-left, top-right, bottom-left, bottom-right

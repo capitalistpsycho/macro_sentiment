@@ -48,8 +48,9 @@ def render(ctx: dict) -> None:
                     f'padding:16px 20px">{body}</div>', unsafe_allow_html=True)
 
     st.markdown(f'<div style="color:{GREY};font-size:11px;margin-top:6px">'
-                f'Seven yfinance-based components approximating the CNN Fear & Greed index. '
-                f'Readings above 75 (extreme greed) or below 25 (extreme fear) are contrarian signals.</div>',
+                f'Six components (yfinance prices + FRED high-yield credit spreads) approximating '
+                f'the CNN Fear & Greed index — VIX weighted once, junk-bond demand from real credit '
+                f'data. Readings above 75 (extreme greed) or below 25 (extreme fear) are contrarian.</div>',
                 unsafe_allow_html=True)
 
     # ── Sentiment trend (from signal history) ──────────────────────────────

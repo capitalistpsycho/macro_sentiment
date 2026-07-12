@@ -41,6 +41,12 @@ def load_backtest(regime_col: str = "regime") -> dict:
     return regime_backtest(regime_col)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def load_regime_performance(universe_key: str, horizon: int = 21) -> dict:
+    from data.backtest import regime_performance, REGIME_UNIVERSES
+    return regime_performance(REGIME_UNIVERSES[universe_key], horizon=horizon)
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_financial_stress() -> dict:
     from data.fred import financial_stress

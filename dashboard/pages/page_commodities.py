@@ -86,6 +86,37 @@ def render(ctx: dict) -> None:
                     f'leading tell on global industrial demand. Relevant to materials/mining exposure '
                     f'and to the broader TSX.</div>', unsafe_allow_html=True)
 
+    # ── Uranium ────────────────────────────────────────────────────────────
+    st.markdown(section_header("URANIUM — NUCLEAR FUEL COMPLEX (6M)"), unsafe_allow_html=True)
+    u1, u2 = st.columns([1.4, 1])
+    URANIUM = [("U-UN.TO", "SPUT (physical spot)"), ("URA", "Miners ETF"),
+               ("URNM", "Pure-Play Miners"), ("CCJ", "Cameco")]
+    with u1:
+        fig = _panel_chart("URA", "#84cc16")
+        if fig:
+            st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+        else:
+            st.info("Uranium data will populate on the next data refresh (run_macro.py).")
+    with u2:
+        head = ("<tr><th>Instrument</th><th style='text-align:right'>1M</th>"
+                "<th style='text-align:right'>3M</th><th style='text-align:right'>YTD</th></tr>")
+        rows = ""
+        for tk, name in URANIUM:
+            r = m.get(tk, {})
+            rows += (
+                f'<tr><td style="font-weight:600;font-size:12px">{name}</td>'
+                f'<td style="text-align:right;color:{pct_color(r.get("return_1m"))}" class="mono">{fmt_pct(r.get("return_1m"))}</td>'
+                f'<td style="text-align:right;color:{pct_color(r.get("return_3m"))}" class="mono">{fmt_pct(r.get("return_3m"))}</td>'
+                f'<td style="text-align:right;color:{pct_color(r.get("return_ytd"))}" class="mono">{fmt_pct(r.get("return_ytd"))}</td></tr>')
+        st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                    f'<tbody>{rows}</tbody></table>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;'
+                    f'padding:10px 14px;margin-top:10px;font-size:12px;color:{GREY};line-height:1.5">'
+                    f'SPUT (Sprott Physical Uranium Trust) tracks spot U₃O₈; the miners/Cameco carry '
+                    f'operating leverage to it. A structural supply-deficit and nuclear-demand theme; '
+                    f'relevant to Canadian producers (Cameco, NexGen) and the TSX.</div>',
+                    unsafe_allow_html=True)
+
     # ── Ratios ─────────────────────────────────────────────────────────────
     r1, r2 = st.columns(2)
     with r1:
