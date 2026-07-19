@@ -93,7 +93,10 @@ def init_db() -> None:
             breadth             REAL,
             risk_score          REAL,
             regime              TEXT,
-            macro_regime        TEXT
+            macro_regime        TEXT,
+            growth_score        REAL,
+            inflation_score     REAL,
+            conviction          REAL
         );
 
         CREATE TABLE IF NOT EXISTS signal_scores (
@@ -139,6 +142,10 @@ def init_db() -> None:
         cols = {r[1] for r in c.execute("PRAGMA table_info(daily_prices)").fetchall()}
         if "return_ytd" not in cols:
             c.execute("ALTER TABLE daily_prices ADD COLUMN return_ytd REAL")
+        mcols = {r[1] for r in c.execute("PRAGMA table_info(macro_signals)").fetchall()}
+        for col in ("growth_score", "inflation_score", "conviction"):
+            if col not in mcols:
+                c.execute(f"ALTER TABLE macro_signals ADD COLUMN {col} REAL")
 
 
 # ── Writers ───────────────────────────────────────────────────────────────────
@@ -164,7 +171,8 @@ def upsert_daily_prices(rows: list[tuple]) -> int:
 def store_macro_signals(d: dict) -> None:
     cols = ["date", "run_ts", "vix_level", "vix_20d_avg", "yield_curve_spread",
             "credit_spread_proxy", "usd_trend", "gold_trend", "oil_trend",
-            "copper_trend", "breadth", "risk_score", "regime", "macro_regime"]
+            "copper_trend", "breadth", "risk_score", "regime", "macro_regime",
+            "growth_score", "inflation_score", "conviction"]
     vals = [d.get(k) for k in cols]
     placeholders = ",".join("?" * len(cols))
     with get_db() as c:

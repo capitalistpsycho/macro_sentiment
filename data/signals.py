@@ -360,6 +360,7 @@ def persist_signals(sig: dict) -> None:
     from data.db import store_macro_signals, store_signal_scores
     run_ts = datetime.now().isoformat(timespec="seconds")
     s = sig["summary"]
+    nc = sig.get("macro_nowcast") or {}
     store_macro_signals({
         "date": sig["date"], "run_ts": run_ts,
         "vix_level": s["vix_level"], "vix_20d_avg": s["vix_20d_avg"],
@@ -369,6 +370,8 @@ def persist_signals(sig: dict) -> None:
         "oil_trend": s["oil_trend"], "copper_trend": s["copper_trend"],
         "breadth": s["breadth"], "risk_score": sig["risk_score"],
         "regime": sig["regime"], "macro_regime": sig["macro_regime"],
+        "growth_score": nc.get("growth_score"), "inflation_score": nc.get("inflation_score"),
+        "conviction": sig.get("macro_conviction"),
     })
     d = sig["dimensions"]
     store_signal_scores({

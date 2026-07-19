@@ -10,7 +10,7 @@ from dashboard.components import (
 )
 from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
-    load_treasury_curve, load_rates_extras, load_boc,
+    load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
 )
 from data import store, fixed_income as fi
 
@@ -184,6 +184,21 @@ def render(ctx: dict) -> None:
         st.caption(f"Chicago Fed National Financial Conditions Index (FRED, as of {fci.get('as_of','—')}). "
                    f"Negative = looser/calmer than average; positive = tighter/stressed.")
 
+        # GDP-weighted (GS-style) FCI — a daily, market-based complement to NFCI.
+        gsf = load_gs_fci()
+        if gsf.get("composite") is not None:
+            comp = gsf["composite"]
+            gcol = RED if comp > 0.1 else GREEN if comp < -0.1 else AMBER
+            parts = " · ".join(f"{k} {v:+.2f}" for k, v in gsf.get("contributions", {}).items())
+            st.markdown(
+                f'<div style="display:flex;gap:12px;margin:4px 0">'
+                f'{stat_card("GDP-weighted FCI (GS-style)", f"{comp:+.2f}", gsf.get("tone", ""), gcol)}'
+                f'{stat_card("Implied growth impulse", f"{gsf.get("growth_impulse"):+.2f}", "≈ pp growth over 1y", gcol)}'
+                f'</div>', unsafe_allow_html=True)
+            st.caption(f"Daily market-based FCI: z-scored short rate, 10Y real yield, HY credit, equity "
+                       f"trend and broad USD, weighted by growth contribution (positive = tighter). "
+                       f"Contributions: {parts}.")
+
         # Stress decomposition: composite + subindices + components
         fs = load_financial_stress()
         if fs.get("composite") is not None:
@@ -242,6 +257,7 @@ def render(ctx: dict) -> None:
                     unsafe_allow_html=True)
         if sig.get("macro_source") == "FRED":
             st.markdown(_conviction_box(sig, nc), unsafe_allow_html=True)
+            st.markdown(_regime_prob_bars(), unsafe_allow_html=True)
             st.markdown(_quadrant_grid(sig["macro_regime"]), unsafe_allow_html=True)
     with q2:
         if nc:
@@ -374,6 +390,34 @@ def _canada_section(m: dict) -> None:
 
 def _pct(v) -> str:
     return (fmt_num(v, 2) + "%") if v is not None else "—"
+
+
+_REGIME_SHORT = {"GOLDILOCKS": "Goldilocks", "REFLATION": "Reflation",
+                 "STAGFLATION": "Stagflation", "DEFLATION RISK": "Deflation"}
+
+
+def _regime_prob_bars() -> str:
+    rp = load_regime_probs()
+    probs = rp.get("probabilities")
+    if not probs:
+        return ""
+    order = sorted(probs.items(), key=lambda kv: kv[1], reverse=True)
+    bars = ""
+    for reg, p in order:
+        col = GOLD if p == order[0][1] else GREY
+        bars += (
+            f'<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;'
+            f'font-size:11px;margin-bottom:2px"><span style="color:{WHITE}">{_REGIME_SHORT.get(reg, reg)}</span>'
+            f'<span style="font-family:JetBrains Mono,monospace;color:{col}">{p:.0f}%</span></div>'
+            f'<div style="background:#0f0f0f;border-radius:4px;height:6px">'
+            f'<div style="width:{p}%;background:{col};height:6px;border-radius:4px"></div></div></div>')
+    return (
+        f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;'
+        f'padding:12px 16px;margin-top:10px">'
+        f'<div style="color:{GOLD};font-size:10px;font-weight:600;text-transform:uppercase;'
+        f'letter-spacing:1px;margin-bottom:6px">Regime probabilities '
+        f'<span style="color:{GREY};font-weight:400;text-transform:none">'
+        f'(Gaussian-Bayes + persistence, n={rp.get("n_train","?")})</span></div>{bars}</div>')
 
 
 def _axis_bar(label: str, score: float | None, pos_word: str, neg_word: str) -> str:

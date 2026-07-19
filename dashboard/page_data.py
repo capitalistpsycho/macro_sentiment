@@ -72,6 +72,18 @@ def load_boc() -> dict:
     return boc_snapshot()
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def load_regime_probs() -> dict:
+    from data.regime_model import regime_probabilities
+    return regime_probabilities()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_gs_fci() -> dict:
+    from data.conditions import gs_style_fci
+    return gs_style_fci()
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_put_call(ticker: str = "SPY") -> dict:
     from data.options import put_call
