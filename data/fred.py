@@ -30,6 +30,8 @@ SERIES: dict[str, tuple[str, str]] = {
     "CPIAUCSL":     ("CPI (headline)",            "inflation"),
     "CPILFESL":     ("Core CPI",                  "inflation"),
     "T10YIE":       ("10y Breakeven Inflation",   "inflation"),
+    "T5YIE":        ("5y Breakeven Inflation",    "inflation"),
+    "T5YIFR":       ("5y5y Forward Inflation",    "inflation"),
     "CFNAI":        ("Chicago Fed Nat. Activity", "growth"),
     "INDPRO":       ("Industrial Production",      "growth"),
     "PAYEMS":       ("Nonfarm Payrolls",          "growth"),
@@ -43,9 +45,38 @@ SERIES: dict[str, tuple[str, str]] = {
     "STLFSI4":      ("St.Louis Fed Stress Index",  "fci"),
     "BAMLH0A0HYM2": ("US High-Yield OAS",          "credit"),
     "BAMLC0A0CM":   ("US Inv-Grade OAS",           "credit"),
+    # Credit spreads by rating bucket — a credit-quality curve (IG: AAA→BBB, HY: BB→CCC).
+    "BAMLC0A1CAAA": ("AAA OAS",                    "credit_rating"),
+    "BAMLC0A2CAA":  ("AA OAS",                     "credit_rating"),
+    "BAMLC0A3CA":   ("A OAS",                      "credit_rating"),
+    "BAMLC0A4CBBB": ("BBB OAS",                    "credit_rating"),
+    "BAMLH0A1HYBB": ("BB OAS",                     "credit_rating"),
+    "BAMLH0A2HYB":  ("B OAS",                      "credit_rating"),
+    "BAMLH0A3HYC":  ("CCC OAS",                    "credit_rating"),
     "DGS10":        ("US 10Y Treasury",            "rates"),
     "T10Y2Y":       ("10Y-2Y Spread",              "rates"),
+    # Real yields (TIPS) — the true driver behind gold and long-duration growth.
+    "DFII10":       ("US 10Y Real Yield",          "rates"),
+    "DFII5":        ("US 5Y Real Yield",           "rates"),
+    # Funding / liquidity.
+    "SOFR30DAYAVG": ("30-Day Avg SOFR",            "funding"),
+    # Broad trade-weighted USD.
+    "DTWEXBGS":     ("Broad USD Index",            "fx"),
 }
+
+# Publication lag (calendar days after the observation's reference date until the
+# print is actually released). Applied ONLY when reading with an explicit as_of
+# so historical regime reconstruction can't peek at data that wasn't out yet —
+# the point-in-time discipline that stops look-ahead bias in the regime playbook.
+# Live reads (as_of=None) are already point-in-time (FRED holds only released obs).
+PUB_LAG_DAYS: dict[str, int] = {
+    "CPIAUCSL": 45, "CPILFESL": 45,   # CPI: ~mid the following month
+    "CFNAI": 55,                       # CFNAI: ~4th week of the following month
+    "INDPRO": 47,                      # IP: ~17th of the following month
+    "PAYEMS": 37, "UNRATE": 37,        # Employment situation: 1st Friday after
+    "ICSA": 5,                         # Weekly claims: ~5 days
+}
+_DEFAULT_LAG = 2  # daily market series (yields, breakevens, OAS, USD) — ~1-2 days
 
 
 # ── Fetch / cache ─────────────────────────────────────────────────────────────
@@ -101,14 +132,26 @@ def refresh_fred(years: int = 6) -> dict:
 
 # ── Read helpers ──────────────────────────────────────────────────────────────
 
-def series(series_id: str, as_of: str | None = None) -> pd.Series:
-    """Cached FRED series as a date-indexed pd.Series (ascending)."""
+def series(series_id: str, as_of: str | None = None, point_in_time: bool = True) -> pd.Series:
+    """Cached FRED series as a date-indexed pd.Series (ascending).
+
+    With ``as_of`` set and ``point_in_time`` (default), an observation dated D is
+    only visible once D + its publication lag has passed — i.e. we cut at
+    ``as_of - PUB_LAG_DAYS[series]``. This stops historical regime reconstruction
+    from reading a print that had not actually been released yet (the look-ahead
+    bias that inflates backtested regime performance). Live reads (as_of=None)
+    are unaffected — FRED only holds released observations.
+    """
+    cutoff = as_of
+    if as_of and point_in_time:
+        lag = PUB_LAG_DAYS.get(series_id, _DEFAULT_LAG)
+        cutoff = (pd.Timestamp(as_of) - pd.Timedelta(days=lag)).strftime("%Y-%m-%d")
     try:
         with get_db() as c:
-            if as_of:
+            if cutoff:
                 df = pd.read_sql_query(
                     "SELECT date, value FROM fred_series WHERE series_id=? AND date<=? "
-                    "ORDER BY date", c, params=(series_id, as_of))
+                    "ORDER BY date", c, params=(series_id, cutoff))
             else:
                 df = pd.read_sql_query(
                     "SELECT date, value FROM fred_series WHERE series_id=? ORDER BY date",
@@ -258,6 +301,65 @@ def macro_nowcast(as_of: str | None = None) -> dict:
         "unemployment": latest("UNRATE", as_of=as_of),
         "as_of": core.index[-1].strftime("%Y-%m-%d"),
     }
+
+
+# ── Rates / inflation / credit term-structure readers ─────────────────────────
+
+def inflation_curve(as_of: str | None = None) -> dict:
+    """Market-implied inflation-expectations curve + real yields from FRED/TIPS."""
+    def chg(sid):  # 1-month change (daily series ~21 obs)
+        s = series(sid, as_of=as_of)
+        return round(float(s.iloc[-1] - s.iloc[-22]), 2) if len(s) >= 22 else None
+    return {
+        "breakeven_5y": latest("T5YIE", as_of=as_of),
+        "breakeven_10y": latest("T10YIE", as_of=as_of),
+        "forward_5y5y": latest("T5YIFR", as_of=as_of),
+        "real_yield_5y": latest("DFII5", as_of=as_of),
+        "real_yield_10y": latest("DFII10", as_of=as_of),
+        "breakeven_10y_1m_chg": chg("T10YIE"),
+        "real_yield_10y_1m_chg": chg("DFII10"),
+        "as_of": _asof_of("T10YIE", as_of),
+    }
+
+
+_RATING_ORDER = [
+    ("BAMLC0A1CAAA", "AAA"), ("BAMLC0A2CAA", "AA"), ("BAMLC0A3CA", "A"),
+    ("BAMLC0A4CBBB", "BBB"), ("BAMLH0A1HYBB", "BB"), ("BAMLH0A2HYB", "B"),
+    ("BAMLH0A3HYC", "CCC"),
+]
+
+
+def credit_curve(as_of: str | None = None) -> dict:
+    """OAS by rating bucket (AAA→CCC) with 1-month change and percentile."""
+    from data.stats import percentile_rank
+    rows = []
+    for sid, label in _RATING_ORDER:
+        s = series(sid, as_of=as_of)
+        if s.empty:
+            continue
+        cur = float(s.iloc[-1])
+        chg = round(cur - float(s.iloc[-22]), 2) if len(s) >= 22 else None
+        rows.append({"rating": label, "oas": round(cur, 2), "chg_1m": chg,
+                     "pct": percentile_rank(cur, s)})
+    return {"curve": rows, "as_of": _asof_of("BAMLC0A4CBBB", as_of)}
+
+
+def funding_conditions(as_of: str | None = None) -> dict:
+    """Funding/liquidity read: 30-day avg SOFR + broad USD level & trend."""
+    def chg(sid, n=22):
+        s = series(sid, as_of=as_of)
+        return round(float(s.iloc[-1] - s.iloc[-1 - n]), 2) if len(s) > n else None
+    return {
+        "sofr_30d": latest("SOFR30DAYAVG", as_of=as_of),
+        "usd_broad": latest("DTWEXBGS", as_of=as_of),
+        "usd_broad_1m_chg": chg("DTWEXBGS"),
+        "as_of": _asof_of("SOFR30DAYAVG", as_of),
+    }
+
+
+def _asof_of(sid: str, as_of: str | None) -> str | None:
+    s = series(sid, as_of=as_of)
+    return s.index[-1].strftime("%Y-%m-%d") if not s.empty else None
 
 
 def financial_conditions(as_of: str | None = None) -> dict:
