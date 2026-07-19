@@ -85,6 +85,30 @@ def load_gs_fci() -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def load_crowding() -> dict:
+    from data.crowding import crowding_score
+    return crowding_score()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_analogues() -> dict:
+    from data.analogues import find_analogues
+    return find_analogues()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_regime_risk(horizon: int = 21) -> dict:
+    from data.backtest import regime_risk_profile
+    return regime_risk_profile(horizon=horizon)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_narrative() -> str:
+    from data.narrative import macro_brief
+    return macro_brief(load_signals())
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_put_call(ticker: str = "SPY") -> dict:
     from data.options import put_call
     return put_call(ticker)

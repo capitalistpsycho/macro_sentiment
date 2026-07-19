@@ -139,6 +139,35 @@ def render(ctx: dict) -> None:
             st.caption("Oil leading = risk-on / strong global growth. Gold leading = risk-off / "
                        "growth concerns dominating.")
 
+    # ── Oil shock scenario (Scotiabank elasticities) ───────────────────────
+    st.markdown(section_header("OIL SHOCK SCENARIO — CANADA vs US IMPACT"), unsafe_allow_html=True)
+    from data.scenarios import oil_scenario
+    shock = st.slider("Oil price shock (WTI, $/bbl, persistent 2y)", -30, 30, 10, 5, key="oil_shock")
+    sc = oil_scenario(shock)
+
+    def _impact_card(name, d, cad=True):
+        gdp, cpi, pol = d.get("gdp_pct_yr2"), d.get("cpi_pp"), d.get("policy_bps")
+        cadrow = (f'<div style="display:flex;justify-content:space-between;padding:4px 0">'
+                  f'<span style="color:{GREY}">CAD</span><span class="mono" style="color:{pct_color(d.get("cad_pct"))}">'
+                  f'{fmt_pct(d.get("cad_pct"))}</span></div>') if cad and d.get("cad_pct") is not None else ""
+        return (
+            f'<div style="flex:1;background:{CARD};border:1px solid {BORDER};border-radius:8px;padding:14px 18px">'
+            f'<div style="color:{GOLD};font-size:13px;font-weight:700;margin-bottom:6px">{name}</div>'
+            f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e">'
+            f'<span style="color:{GREY}">GDP (yr 2)</span><span class="mono" style="color:{pct_color(gdp)}">{fmt_pct(gdp)}</span></div>'
+            f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e">'
+            f'<span style="color:{GREY}">CPI</span><span class="mono" style="color:{WHITE}">{cpi:+.2f} pp</span></div>'
+            f'<div style="display:flex;justify-content:space-between;padding:4px 0">'
+            f'<span style="color:{GREY}">Policy rate</span><span class="mono" style="color:{WHITE}">{pol:+.0f} bp</span></div>'
+            f'{cadrow}</div>')
+    st.markdown(f'<div style="display:flex;gap:12px">'
+                f'{_impact_card("🇨🇦 Canada", sc["Canada"])}'
+                f'{_impact_card("🇺🇸 United States", sc["US"], cad=False)}</div>',
+                unsafe_allow_html=True)
+    st.caption(f"A {shock:+d}/bbl persistent WTI shock, per Scotiabank's Canada–U.S. Macro Model "
+               f"elasticities (scale ~linearly). Oil is a net terms-of-trade gain for Canada (energy "
+               f"exporter) but a wash-to-headwind for the US. Direct read-through to TSX energy and CAD.")
+
     # ── Canadian commodity link ────────────────────────────────────────────
     st.markdown(section_header("CANADIAN COMMODITY LINK"), unsafe_allow_html=True)
     oil_1m = m.get("CL=F", {}).get("return_1m")

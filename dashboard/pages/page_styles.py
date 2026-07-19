@@ -8,7 +8,9 @@ from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, CARD, BORDER, BG, se
 from dashboard.components import (
     perf_heatmap_html, line_chart, pct_color, fmt_pct, fmt_num,
 )
-from dashboard.page_data import load_metrics, load_signals, load_regime_performance
+from dashboard.page_data import (
+    load_metrics, load_signals, load_regime_performance, load_regime_risk,
+)
 from data import store, backtest as bt
 
 PERIODS = [("return_5d", "1W"), ("return_1m", "1M"), ("return_3m", "3M"),
@@ -164,6 +166,47 @@ def render(ctx: dict) -> None:
 
     # ── Regime playbook — how styles/regions have performed by macro regime ──
     _regime_playbook()
+
+    # ── Regime risk profile — tail/shape of forward returns by regime ───────
+    _regime_risk_profile()
+
+
+def _regime_risk_profile() -> None:
+    sig = load_signals()
+    current = sig.get("macro_regime")
+    rr = load_regime_risk(21)
+    if not rr or not rr.get("_order"):
+        return
+    st.markdown(section_header("REGIME RISK PROFILE — S&P FORWARD-RETURN SHAPE (1M)"),
+                unsafe_allow_html=True)
+    head = ("<tr><th>Regime</th><th style='text-align:right'>Mean</th>"
+            "<th style='text-align:right'>Vol</th><th style='text-align:right'>CVaR 5%</th>"
+            "<th style='text-align:right'>Worst</th><th style='text-align:right'>Skew</th>"
+            "<th style='text-align:right'>Hit</th><th style='text-align:right'>n</th></tr>")
+    body = ""
+    for reg in rr["_order"]:
+        d = rr[reg]
+        if d.get("mean") is None:
+            continue
+        hot = reg == current
+        name = f'<b style="color:{GOLD}">▸ {reg}</b>' if hot else f'<span style="color:{WHITE}">{reg}</span>'
+        rowbg = "background:rgba(201,162,39,0.10)" if hot else ""
+        sk = d.get("skew")
+        skcol = RED if (sk or 0) < -0.3 else GREEN if (sk or 0) > 0.3 else GREY
+        body += (
+            f'<tr style="{rowbg}"><td>{name}</td>'
+            f'<td style="text-align:right;color:{pct_color(d["mean"])}" class="mono">{fmt_pct(d["mean"])}</td>'
+            f'<td style="text-align:right" class="mono">{fmt_num(d["vol"],1)}</td>'
+            f'<td style="text-align:right;color:{RED}" class="mono">{fmt_pct(d["cvar5"])}</td>'
+            f'<td style="text-align:right;color:{RED}" class="mono">{fmt_pct(d["worst"])}</td>'
+            f'<td style="text-align:right;color:{skcol}" class="mono">{fmt_num(sk,2)}</td>'
+            f'<td style="text-align:right" class="mono">{fmt_num(d["hit"],0)}%</td>'
+            f'<td style="text-align:right;color:{GREY}" class="mono">{d["n"]}</td></tr>')
+    st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+    st.caption("Distribution shape of S&P forward 1-month returns conditional on each regime — not just "
+               "the average. CVaR 5% = mean of the worst 5% of outcomes; negative skew = fat left tail. "
+               "Two regimes with the same mean can carry very different downside.")
 
 
 def _excess_color(x: float | None) -> str:

@@ -128,3 +128,43 @@ def regime_performance(universe: list[tuple[str, str]], regime_col: str = "macro
     out["_days"] = counts
     out["_horizon"] = horizon
     return out
+
+
+def regime_risk_profile(regime_col: str = "macro_regime", horizon: int = 21,
+                        ticker: str = "SPY") -> dict:
+    """Per-regime tail/risk profile of forward returns — mean, vol, CVaR, skew.
+
+    Desks manage to a risk budget, not just an average: this reports the shape of
+    the forward-return distribution conditional on each regime (downside as well
+    as central tendency). Overlapping windows ⇒ descriptive.
+    """
+    ms = store.signal_history("macro_signals")
+    if ms.empty or regime_col not in ms.columns:
+        return {}
+    ms = ms[["date", regime_col]].dropna()
+    ms = ms.set_index(pd.to_datetime(ms["date"]))
+    fwd = _forward_returns(ticker, horizon)
+
+    out, counts = {}, {}
+    for regime, grp in ms.groupby(regime_col):
+        vals = fwd.reindex(grp.index).dropna()
+        counts[regime] = len(vals)
+        if len(vals) < 5:
+            out[regime] = {"mean": None, "vol": None, "cvar5": None, "worst": None,
+                           "skew": None, "hit": None, "n": int(len(vals))}
+            continue
+        v = np.sort(vals.to_numpy(dtype=float))
+        tail_n = max(1, int(len(v) * 0.05))
+        out[regime] = {
+            "mean": round(float(v.mean()), 2),
+            "vol": round(float(v.std(ddof=1)), 2),
+            "cvar5": round(float(v[:tail_n].mean()), 2),   # mean of worst 5%
+            "worst": round(float(v.min()), 2),
+            "skew": round(float(pd.Series(v).skew()), 2),
+            "hit": round(float((vals > 0).mean()) * 100, 0),
+            "n": int(len(vals)),
+        }
+    out["_order"] = sorted(counts, key=lambda r: counts[r], reverse=True)
+    out["_horizon"] = horizon
+    out["_ticker"] = ticker
+    return out

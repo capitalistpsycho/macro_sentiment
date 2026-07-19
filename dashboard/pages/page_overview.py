@@ -13,6 +13,7 @@ from dashboard.components import (
 from dashboard.polaris import render_polaris_bar
 from dashboard.page_data import (
     load_metrics, load_signals, load_context_percentiles, load_backtest,
+    load_narrative, load_analogues,
 )
 
 
@@ -179,6 +180,16 @@ def render(ctx: dict) -> None:
         f'{stat_card("Macro Regime", sig["macro_regime"], regime_sub, GOLD)}'
         f'</div>', unsafe_allow_html=True)
 
+    # ── Auto macro brief ───────────────────────────────────────────────────
+    brief = load_narrative()
+    if brief:
+        st.markdown(
+            f'<div style="background:{CARD};border:1px solid {GOLD};border-radius:8px;'
+            f'padding:14px 20px;margin:6px 0 14px 0"><div style="color:{GOLD};font-size:11px;'
+            f'font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">'
+            f'The read</div><div style="color:{WHITE};font-size:14px;line-height:1.7">{brief}</div></div>',
+            unsafe_allow_html=True)
+
     # ── 2x2 quadrants ──────────────────────────────────────────────────────
     st.markdown(section_header("MARKET DASHBOARD"), unsafe_allow_html=True)
     r1c1, r1c2 = st.columns(2)
@@ -201,6 +212,28 @@ def render(ctx: dict) -> None:
         st.caption("Average forward return and hit rate (% positive) of each index following days "
                    "in each market regime, from the dashboard's signal history. Current regime "
                    "highlighted. Overlapping daily windows — descriptive context, not an iid backtest.")
+
+    # ── Historical analogues ───────────────────────────────────────────────
+    an = load_analogues()
+    if an.get("analogues"):
+        st.markdown(section_header("HISTORICAL ANALOGUES — WHEN DID NOW LOOK LIKE THIS?"),
+                    unsafe_allow_html=True)
+        head = ("<tr><th>Analogue date</th><th style='text-align:right'>Similarity</th>"
+                "<th>Regime then</th><th style='text-align:right'>S&P next month</th></tr>")
+        body = ""
+        for a in an["analogues"]:
+            fwd = a.get("spy_fwd")
+            body += (f'<tr><td class="mono" style="color:{GOLD}">{a["date"]}</td>'
+                     f'<td style="text-align:right" class="mono">{a.get("similarity",0):.0f}%</td>'
+                     f'<td style="color:{WHITE}">{a.get("regime","—")}</td>'
+                     f'<td style="text-align:right;color:{pct_color(fwd)}" class="mono">{fmt_pct(fwd)}</td></tr>')
+        st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                    f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+        avg = an.get("avg_fwd")
+        st.caption(f"Nearest neighbours to today's standardized macro state (growth/inflation scores, "
+                   f"risk, breadth, VIX, curve, credit) over the signal history, excluding the last "
+                   f"quarter. Similar states saw the S&P {fmt_pct(avg)} on average over the next month "
+                   f"— an analogue read, not a forecast.")
 
     # ── Ticker tape ────────────────────────────────────────────────────────
     st.markdown(_ticker_tape(m), unsafe_allow_html=True)

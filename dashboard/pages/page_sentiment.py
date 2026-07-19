@@ -6,7 +6,7 @@ import streamlit as st
 
 from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, AMBER, CARD, BORDER, section_header
 from dashboard.components import mini_gauge, line_chart, stat_card, pct_color, fmt_pct, fmt_num
-from dashboard.page_data import load_metrics, load_sentiment, load_put_call
+from dashboard.page_data import load_metrics, load_sentiment, load_put_call, load_crowding
 from data import store
 
 FG_ZONES = [
@@ -141,6 +141,37 @@ def render(ctx: dict) -> None:
                 f'(fear); extremes are contrarian.</div></div>', unsafe_allow_html=True)
     else:
         st.info("Live options data unavailable right now (yfinance) — check back during market hours.")
+
+    # ── Crowding composite ─────────────────────────────────────────────────
+    cw = load_crowding()
+    if cw.get("score") is not None:
+        st.markdown(section_header("CROWDING / POSITIONING COMPOSITE"), unsafe_allow_html=True)
+        cscore = cw["score"]
+        ccol = RED if cscore >= 70 else AMBER if cscore >= 55 else GREEN
+        k1, k2 = st.columns([1, 1.4])
+        with k1:
+            st.markdown(
+                f'<div style="background:{CARD};border:1px solid {ccol};border-radius:8px;'
+                f'padding:16px 20px;text-align:center"><div style="font-size:44px;font-weight:700;'
+                f'color:{ccol};font-family:JetBrains Mono,monospace;line-height:1.1">{cscore:.0f}'
+                f'<span style="font-size:15px;color:{GREY}">/100</span></div>'
+                f'<div style="color:{ccol};font-size:12px;margin-top:4px">{cw.get("label","")}</div></div>',
+                unsafe_allow_html=True)
+        with k2:
+            bars = ""
+            for nm, val in cw.get("components", {}).items():
+                bc = RED if val >= 70 else AMBER if val >= 55 else GREEN
+                bars += (f'<div style="margin-bottom:8px"><div style="display:flex;'
+                         f'justify-content:space-between;font-size:12px;margin-bottom:2px">'
+                         f'<span style="color:{WHITE}">{nm}</span>'
+                         f'<span style="color:{bc};font-family:JetBrains Mono,monospace">{val:.0f}</span></div>'
+                         f'<div style="background:#0f0f0f;border-radius:4px;height:6px">'
+                         f'<div style="width:{val}%;background:{bc};height:6px;border-radius:4px"></div></div></div>')
+            st.markdown(f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;'
+                        f'padding:14px 18px">{bars}</div>', unsafe_allow_html=True)
+        st.caption("Crowding proxies (0-100, higher = more crowded): mega-cap concentration (RSP/SPY), "
+                   "momentum-factor crowding, volatility complacency and extreme CFTC positioning. "
+                   "Crowding builds slowly and unwinds all at once — high readings raise tail/unwind risk.")
 
     # ── Speculative positioning (CFTC COT) ─────────────────────────────────
     st.markdown(section_header("SPECULATIVE POSITIONING — CFTC COMMITMENT OF TRADERS"),
