@@ -75,9 +75,12 @@ REGIME_UNIVERSES = {
         ("IWF", "Growth"), ("IWD", "Value"), ("MTUM", "Momentum"),
         ("QUAL", "Quality"), ("USMV", "Low Vol"), ("IWM", "Small Cap"),
     ],
+    # All USD-denominated ETFs so excess-vs-SPY is apples-to-apples (no FX in the
+    # comparison). Canada = EWC (MSCI Canada in USD); the CAD-quoted ^GSPTSE would
+    # mix the equity move with CAD/USD, and there's no US row since SPY is the base.
     "Regions": [
         ("EEM", "Emerging Mkts"), ("VEA", "Developed ex-US"), ("VGK", "Europe"),
-        ("EWJ", "Japan"), ("MCHI", "China"), ("EWC", "Canada"), ("^GSPTSE", "S&P/TSX"),
+        ("EWJ", "Japan"), ("MCHI", "China"), ("EWC", "Canada"),
     ],
 }
 
