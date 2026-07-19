@@ -75,6 +75,7 @@ FIXED_INCOME = [
     ("^IRX",   "US 3M Yield",       "USD"),
     ("^FVX",   "US 5Y Yield",       "USD"),
     ("^TYX",   "US 30Y Yield",      "USD"),
+    ("^MOVE",  "MOVE (rate vol)",   "USD"),
     ("TLT",    "Long Duration",     "USD"),
     ("IEF",    "Medium Duration",   "USD"),
     ("SHY",    "Short Duration",    "USD"),

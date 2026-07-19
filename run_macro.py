@@ -58,6 +58,22 @@ def main() -> int:
     except Exception as exc:
         log.warning("COT refresh failed (continuing): %s", exc)
 
+    # 1d. FMP full US Treasury curve (paid tier, key on hand)
+    try:
+        from data.fmp import refresh_treasury
+        tstats = refresh_treasury()
+        log.info("FMP Treasury: %d rows (%d days).", tstats["rows"], tstats["days"])
+    except Exception as exc:
+        log.warning("FMP Treasury refresh failed (continuing): %s", exc)
+
+    # 1e. Bank of Canada (policy rate, GoC curve, CAD)
+    try:
+        from data.boc import refresh_boc
+        bstats = refresh_boc()
+        log.info("BoC: %d series, %d rows.", bstats["series"], bstats["rows"])
+    except Exception as exc:
+        log.warning("BoC refresh failed (continuing): %s", exc)
+
     # 2. Signals (cheap; computed in both modes so the gauge always has data)
     from data.signals import compute_signals, persist_signals
     sig = compute_signals()

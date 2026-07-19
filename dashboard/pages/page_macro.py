@@ -10,6 +10,7 @@ from dashboard.components import (
 )
 from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
+    load_treasury_curve, load_rates_extras, load_boc,
 )
 from data import store, fixed_income as fi
 
@@ -84,6 +85,18 @@ def render(ctx: dict) -> None:
                          hlines=[{"y": 0, "label": "Inversion", "color": RED}])
         st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
         st.caption("Red zone = inverted curve (10Y below 3M) — historically a recession lead indicator.")
+
+    # ── Full US Treasury curve + slopes (FMP) ──────────────────────────────
+    _treasury_curve_section()
+
+    # ── Real yields & inflation expectations, funding (FRED) ───────────────
+    _rates_conditions_section()
+
+    # ── Credit curve by rating (FRED) ──────────────────────────────────────
+    _credit_curve_section()
+
+    # ── Canada — BoC, GoC curve, CAD ───────────────────────────────────────
+    _canada_section(m)
 
     # ── VIX + Credit ───────────────────────────────────────────────────────
     v1, v2 = st.columns(2)
@@ -241,6 +254,126 @@ def render(ctx: dict) -> None:
     else:
         st.caption("FRED macro data unavailable — showing the ETF-momentum proxy regime. "
                    "Set FRED_API_KEY to enable the real growth × inflation nowcast.")
+
+
+def _slope_tile(label: str, val, good_positive=True) -> str:
+    if val is None:
+        col, txt = GREY, "—"
+    else:
+        col = (GREEN if val > 0 else RED) if good_positive else (RED if val < 0 else GREEN)
+        txt = f"{val:+.2f}"
+    return (f'<div style="flex:1;background:{CARD};border:1px solid {BORDER};border-radius:8px;'
+            f'padding:10px 12px;text-align:center"><div style="color:{GREY};font-size:10px;'
+            f'text-transform:uppercase;letter-spacing:0.6px">{label}</div>'
+            f'<div style="font-family:JetBrains Mono,monospace;font-size:20px;color:{col}">{txt}</div></div>')
+
+
+def _treasury_curve_section() -> None:
+    curve, an = load_treasury_curve()
+    if not curve:
+        return
+    st.markdown(section_header("US TREASURY CURVE — FULL TERM STRUCTURE (FMP)"), unsafe_allow_html=True)
+    c1, c2 = st.columns([1.5, 1])
+    with c1:
+        xs = [p["tenor"] for p in curve]
+        ys = [p["yield"] for p in curve]
+        fig = line_chart([{"x": xs, "y": ys, "name": "UST yield", "color": GOLD}], height=280,
+                         showlegend=False)
+        fig.update_traces(mode="lines+markers")
+        st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+        st.caption("Full daily Treasury curve across 12 tenors (1M→30Y). Shape reads growth/policy "
+                   "expectations; a humped/kinked front end flags near-term policy tension.")
+    with c2:
+        st.markdown(f'<div style="display:flex;flex-direction:column;gap:8px">'
+                    f'{_slope_tile("2s10s", an.get("2s10s"))}'
+                    f'{_slope_tile("3M–10Y", an.get("3m10y"))}'
+                    f'{_slope_tile("5s30s", an.get("5s30s"))}'
+                    f'{_slope_tile("Curvature (2·5Y−2Y−10Y)", an.get("curvature"), good_positive=False)}'
+                    f'</div>', unsafe_allow_html=True)
+        st.caption("Positive slopes = normal/steepening (risk-on, growth). Curvature > 0 = belly "
+                   "cheap (policy-tightening pricing).")
+
+
+def _rates_conditions_section() -> None:
+    ex = load_rates_extras()
+    inf, fund = ex["inflation"], ex["funding"]
+    move = load_metrics().get("^MOVE", {}).get("close")
+    st.markdown(section_header("REAL YIELDS · INFLATION EXPECTATIONS · FUNDING"), unsafe_allow_html=True)
+    ry10 = inf.get("real_yield_10y")
+    ry_chg = inf.get("real_yield_10y_1m_chg")
+    ry_sub = ("rising — growth headwind" if (ry_chg or 0) > 0.05 else
+              "falling — supports gold/growth" if (ry_chg or 0) < -0.05 else "flat")
+    tiles = "".join([
+        stat_card("10Y Real Yield (TIPS)", _pct(ry10), ry_sub, RED if (ry_chg or 0) > 0 else GREEN),
+        stat_card("5Y Breakeven", _pct(inf.get("breakeven_5y")), "market inflation exp.", GOLD),
+        stat_card("10Y Breakeven", _pct(inf.get("breakeven_10y")), "market inflation exp.", GOLD),
+        stat_card("5y5y Forward", _pct(inf.get("forward_5y5y")), "long-run inflation anchor", GOLD),
+    ])
+    st.markdown(f'<div style="display:flex;gap:12px;margin:6px 0">{tiles}</div>', unsafe_allow_html=True)
+    move_col = RED if (move or 0) > 120 else AMBER if (move or 0) > 100 else GREEN
+    tiles2 = "".join([
+        stat_card("30-Day SOFR", _pct(fund.get("sofr_30d")), "secured funding rate", WHITE),
+        stat_card("MOVE Index", fmt_num(move, 1) if move else "—", "rates volatility (bond VIX)", move_col),
+        stat_card("Broad USD", fmt_num(fund.get("usd_broad"), 1), f"1M {fmt_pct(fund.get('usd_broad_1m_chg'))}",
+                  pct_color(-(fund.get("usd_broad_1m_chg") or 0))),
+    ])
+    st.markdown(f'<div style="display:flex;gap:12px;margin:6px 0">{tiles2}</div>', unsafe_allow_html=True)
+    st.caption("Real yields (nominal − TIPS) are the true driver behind gold and long-duration growth. "
+               "5y5y forward is the market's long-run inflation anchor. MOVE = the bond market's VIX; "
+               "rising MOVE + widening credit is the classic stress combination.")
+
+
+def _credit_curve_section() -> None:
+    cc = load_rates_extras()["credit"]
+    rows = cc.get("curve") or []
+    if not rows:
+        return
+    st.markdown(section_header("CREDIT CURVE — OAS BY RATING (FRED / ICE BofA)"), unsafe_allow_html=True)
+    head = ("<tr><th>Rating</th><th style='text-align:right'>OAS (%)</th>"
+            "<th style='text-align:right'>Δ 1M</th><th style='text-align:right'>Percentile (6y)</th>"
+            "<th>Positioning</th></tr>")
+    body = ""
+    for r in rows:
+        p = r.get("pct")
+        pcol = RED if (p or 50) >= 80 else GREEN if (p or 50) <= 20 else WHITE
+        read = ("wide — cheap/stressed" if (p or 50) >= 80 else
+                "tight — rich/complacent" if (p or 50) <= 20 else "mid-range")
+        body += (f'<tr><td style="font-weight:600">{r["rating"]}</td>'
+                 f'<td style="text-align:right" class="mono">{fmt_num(r["oas"],2)}</td>'
+                 f'<td style="text-align:right;color:{pct_color(-(r.get("chg_1m") or 0))}" class="mono">{r.get("chg_1m"):+.2f}</td>'
+                 f'<td style="text-align:right;color:{pcol}" class="mono">{fmt_num(p,0)}th</td>'
+                 f'<td style="color:{pcol};font-size:12px">{read}</td></tr>')
+    st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+    st.caption("Spread widening lowest-quality first (CCC) is the early tell of credit-cycle turns. "
+               "Percentile vs 6-year history: high = spreads wide/cheap, low = tight/complacent.")
+
+
+def _canada_section(m: dict) -> None:
+    b = load_boc()
+    if b.get("policy_rate") is None and b.get("usdcad") is None:
+        return
+    st.markdown(section_header("CANADA — BoC, GoC CURVE & CAD"), unsafe_allow_html=True)
+    spread = b.get("goc_ust_10y_spread")
+    cad_read = ("GoC yields below US — a structural CAD headwind" if (spread or 0) < 0
+                else "GoC yields above US — CAD-supportive")
+    tiles = "".join([
+        stat_card("BoC Policy Rate", _pct(b.get("policy_rate")), "target overnight", WHITE),
+        stat_card("GoC 2s10s", fmt_num(b.get("goc_2s10s"), 2), "curve slope",
+                  GREEN if (b.get("goc_2s10s") or 0) > 0 else RED),
+        stat_card("GoC−UST 10Y", fmt_num(spread, 2), "rate differential",
+                  GREEN if (spread or 0) > 0 else RED),
+        stat_card("USD/CAD", fmt_num(b.get("usdcad"), 4),
+                  f"1M {fmt_num(b.get('usdcad_1m_chg'), 3)}", WHITE),
+    ])
+    st.markdown(f'<div style="display:flex;gap:12px;margin:6px 0">{tiles}</div>', unsafe_allow_html=True)
+    st.caption(f"Government-of-Canada curve (2/5/10Y), CORRA {fmt_num(b.get('corra'),2)}%, and CAD from "
+               f"the Bank of Canada. {cad_read}. The BoC–Fed rate gap is the dominant CAD driver "
+               f"(as of {b.get('as_of','—')}).")
+
+
+def _pct(v) -> str:
+    return (fmt_num(v, 2) + "%") if v is not None else "—"
 
 
 def _axis_bar(label: str, score: float | None, pos_word: str, neg_word: str) -> str:

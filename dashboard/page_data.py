@@ -54,6 +54,25 @@ def load_financial_stress() -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def load_treasury_curve() -> tuple:
+    from data.fmp import treasury_curve, curve_analytics
+    return treasury_curve(), curve_analytics()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_rates_extras() -> dict:
+    from data.fred import inflation_curve, credit_curve, funding_conditions
+    return {"inflation": inflation_curve(), "credit": credit_curve(),
+            "funding": funding_conditions()}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_boc() -> dict:
+    from data.boc import boc_snapshot
+    return boc_snapshot()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_put_call(ticker: str = "SPY") -> dict:
     from data.options import put_call
     return put_call(ticker)
