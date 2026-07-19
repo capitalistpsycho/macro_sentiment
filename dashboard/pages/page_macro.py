@@ -11,7 +11,7 @@ from dashboard.components import (
 from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
-    load_correlation,
+    load_correlation, load_regime_transitions, load_allocation,
 )
 from data import store, fixed_income as fi
 
@@ -284,6 +284,78 @@ def render(ctx: dict) -> None:
     else:
         st.caption("FRED macro data unavailable — showing the ETF-momentum proxy regime. "
                    "Set FRED_API_KEY to enable the real growth × inflation nowcast.")
+
+    # ── Regime → positioning (transitions, All-Weather tilts, vol target) ───
+    if sig.get("macro_source") == "FRED":
+        _regime_positioning_section()
+
+
+def _regime_positioning_section() -> None:
+    tr = load_regime_transitions()
+    al = load_allocation()
+    if not tr and not al.get("tilts"):
+        return
+    st.markdown(section_header("REGIME → POSITIONING"), unsafe_allow_html=True)
+    p1, p2 = st.columns([1, 1.2])
+    with p1:
+        if tr:
+            nxt = tr.get("next_period", {})
+            order = sorted(nxt.items(), key=lambda kv: kv[1], reverse=True)
+            bars = ""
+            for reg, p in order:
+                col = GOLD if reg == tr.get("current") else GREY
+                bars += (f'<div style="margin-bottom:6px"><div style="display:flex;'
+                         f'justify-content:space-between;font-size:11px;margin-bottom:2px">'
+                         f'<span style="color:{WHITE}">{_REGIME_SHORT.get(reg, reg)}</span>'
+                         f'<span style="font-family:JetBrains Mono,monospace;color:{col}">{p:.0f}%</span></div>'
+                         f'<div style="background:#0f0f0f;border-radius:4px;height:6px">'
+                         f'<div style="width:{p}%;background:{col};height:6px;border-radius:4px"></div></div></div>')
+            st.markdown(
+                f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;padding:12px 16px">'
+                f'<div style="color:{GOLD};font-size:10px;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:1px;margin-bottom:2px">Where the regime goes next (~1 month)</div>'
+                f'<div style="color:{GREY};font-size:11px;margin-bottom:8px">'
+                f'{tr.get("change_prob",0):.0f}% chance of a regime change · expected duration '
+                f'~{tr.get("expected_duration_days","?")} trading days</div>{bars}</div>',
+                unsafe_allow_html=True)
+        vt = al.get("vol") or {}
+        if vt.get("exposure") is not None:
+            ec = GREEN if vt["exposure"] > 1.05 else RED if vt["exposure"] < 0.95 else WHITE
+            st.markdown(
+                f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;'
+                f'padding:12px 16px;margin-top:10px"><div style="display:flex;justify-content:space-between;'
+                f'align-items:baseline"><span style="color:{GOLD};font-size:10px;font-weight:600;'
+                f'text-transform:uppercase;letter-spacing:1px">Vol-target exposure</span>'
+                f'<span style="font-family:JetBrains Mono,monospace;color:{ec};font-size:20px">'
+                f'{vt["exposure"]:.2f}×</span></div>'
+                f'<div style="color:{GREY};font-size:11px;margin-top:4px">Realised vol {vt["current_vol"]:.0f}% '
+                f'vs {vt["target_vol"]:.0f}% target — {vt.get("read","")}.</div></div>',
+                unsafe_allow_html=True)
+    with p2:
+        tilts = (al.get("tilts") or {}).get("tilts", {})
+        if tilts:
+            rows = ""
+            for asset, tv in tilts.items():
+                pct = abs(tv) / 2 * 50  # half-width, ±2 = full
+                col = GREEN if tv > 0.1 else RED if tv < -0.1 else GREY
+                side = "left:50%" if tv >= 0 else "right:50%"
+                rows += (
+                    f'<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;'
+                    f'font-size:12px;margin-bottom:2px"><span style="color:{WHITE}">{asset}</span>'
+                    f'<span style="font-family:JetBrains Mono,monospace;color:{col}">{tv:+.1f}</span></div>'
+                    f'<div style="position:relative;background:#0f0f0f;border-radius:4px;height:8px">'
+                    f'<div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:{BORDER}"></div>'
+                    f'<div style="position:absolute;{side};top:0;height:8px;width:{pct}%;background:{col};'
+                    f'border-radius:4px"></div></div></div>')
+            st.markdown(
+                f'<div style="background:{CARD};border:1px solid {GOLD};border-radius:8px;padding:12px 16px">'
+                f'<div style="color:{GOLD};font-size:10px;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:1px;margin-bottom:8px">All-Weather tilts (probability-blended)</div>'
+                f'{rows}</div>', unsafe_allow_html=True)
+    st.caption("Positioning read, not advice: forward regime distribution from the estimated Markov "
+               "transition matrix; asset-class tilts are the All-Weather environment map blended by the "
+               "live regime probabilities (−2 strong underweight … +2 strong overweight); vol-target "
+               "scales gross exposure toward a ~12% risk budget.")
 
 
 def _slope_tile(label: str, val, good_positive=True) -> str:

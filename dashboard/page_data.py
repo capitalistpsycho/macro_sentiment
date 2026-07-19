@@ -120,6 +120,18 @@ def load_iv_skew(ticker: str = "SPY") -> dict:
     return iv_skew(ticker)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def load_regime_transitions() -> dict:
+    from data.regime_model import regime_transitions
+    return regime_transitions()
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_allocation() -> dict:
+    from data.allocation import suggested_tilts, vol_target
+    return {"tilts": suggested_tilts(), "vol": vol_target()}
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_put_call(ticker: str = "SPY") -> dict:
     from data.options import put_call

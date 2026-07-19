@@ -97,3 +97,46 @@ def regime_probabilities(growth: float | None = None, inflation: float | None = 
         "runner_up": ranked[1][0], "runner_up_prob": round(ranked[1][1] * 100, 1),
         "n_train": int(len(X)),
     }
+
+
+def regime_transitions(steps: int = 21) -> dict:
+    """Markov transition analytics: where the regime goes next + how long it lasts.
+
+    Estimates the 4×4 day-to-day transition matrix from the realised label
+    sequence, then raises it to ``steps`` (≈1 month of trading days) for the
+    forward distribution from today's regime, and reads expected persistence off
+    the diagonal (geometric mean duration = 1/(1−P_stay)).
+    """
+    ms = _history()
+    if ms is None:
+        return {}
+    labels = ms["macro_regime"].to_numpy()
+    idx = {r: i for i, r in enumerate(REGIMES)}
+    M = np.zeros((4, 4))
+    for a, b in zip(labels[:-1], labels[1:]):
+        if a in idx and b in idx:
+            M[idx[a], idx[b]] += 1
+    rs = M.sum(axis=1, keepdims=True)
+    rs[rs == 0] = 1.0
+    P = M / rs
+
+    cur = labels[-1]
+    if cur not in idx:
+        return {}
+    Pn = np.linalg.matrix_power(P, max(1, steps))
+    dist = Pn[idx[cur]]
+    p_stay = float(P[idx[cur], idx[cur]])
+    exp_dur = round(1 / (1 - p_stay)) if p_stay < 0.999 else None
+
+    nxt = {r: round(float(dist[idx[r]]) * 100, 1) for r in REGIMES}
+    ranked = sorted(nxt.items(), key=lambda kv: kv[1], reverse=True)
+    return {
+        "current": cur,
+        "steps": steps,
+        "next_period": nxt,
+        "most_likely_next": ranked[0][0],
+        "change_prob": round(100 - nxt.get(cur, 0), 1),  # P(not in current regime in `steps`)
+        "stay_prob_daily": round(p_stay * 100, 1),
+        "expected_duration_days": exp_dur,
+        "matrix": {a: {b: round(float(P[idx[a], idx[b]]) * 100, 1) for b in REGIMES} for a in REGIMES},
+    }
