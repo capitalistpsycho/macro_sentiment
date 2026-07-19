@@ -13,7 +13,7 @@ from dashboard.components import (
 from dashboard.polaris import render_polaris_bar
 from dashboard.page_data import (
     load_metrics, load_signals, load_context_percentiles, load_backtest,
-    load_narrative, load_analogues,
+    load_narrative, load_analogues, load_valuation,
 )
 
 
@@ -234,6 +234,24 @@ def render(ctx: dict) -> None:
                    f"risk, breadth, VIX, curve, credit) over the signal history, excluding the last "
                    f"quarter. Similar states saw the S&P {fmt_pct(avg)} on average over the next month "
                    f"— an analogue read, not a forecast.")
+
+    # ── Strategic valuation (long-run expected return) ─────────────────────
+    val = load_valuation()
+    if val.get("exp_annual_return") is not None:
+        pa = val["pct_from_trend"]
+        pcol = RED if pa > 15 else GREEN if pa < -15 else AMBER
+        er = val["exp_annual_return"]
+        ercol = GREEN if er >= 7 else AMBER if er >= 4 else RED
+        st.markdown(section_header("STRATEGIC VALUATION — LONG-RUN EXPECTED RETURN"),
+                    unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="display:flex;gap:12px;margin:6px 0">'
+            f'{stat_card("S&P vs 16y Trend", f"{pa:+.1f}%", val.get("read",""), pcol)}'
+            f'{stat_card(f"Implied {val.get("horizon_years",5)}y Annual Return", f"{er:+.1f}%", "valuation mean-reversion", ercol)}'
+            f'</div>', unsafe_allow_html=True)
+        st.caption("Grantham/GMO-style mean-reversion: log-linear trend on ~16 years of the S&P, today's "
+                   "deviation mapped to the forward annualized return via its own history. A strategic "
+                   "anchor beneath the tactical regime call — not a market-timing signal.")
 
     # ── Ticker tape ────────────────────────────────────────────────────────
     st.markdown(_ticker_tape(m), unsafe_allow_html=True)

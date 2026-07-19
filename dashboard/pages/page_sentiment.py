@@ -8,6 +8,7 @@ from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, AMBER, CARD, BORDER,
 from dashboard.components import mini_gauge, line_chart, stat_card, pct_color, fmt_pct, fmt_num
 from dashboard.page_data import (
     load_metrics, load_sentiment, load_put_call, load_crowding, load_iv_skew,
+    load_analyst_breadth,
 )
 from data import store
 
@@ -150,6 +151,24 @@ def render(ctx: dict) -> None:
                 f'(fear); extremes are contrarian.</div></div>', unsafe_allow_html=True)
     else:
         st.info("Live options data unavailable right now (yfinance) — check back during market hours.")
+
+    # ── Analyst-sentiment breadth ──────────────────────────────────────────
+    ab = load_analyst_breadth()
+    if ab.get("net_bull_pct") is not None:
+        st.markdown(section_header("ANALYST-SENTIMENT BREADTH (LARGE-CAP BASKET)"),
+                    unsafe_allow_html=True)
+        nb = ab["net_bull_pct"]
+        nbcol = GREEN if nb > 40 else AMBER if nb > 15 else RED
+        up = ab.get("avg_upside")
+        st.markdown(
+            f'<div style="display:flex;gap:12px;margin:6px 0">'
+            f'{stat_card("Net Bullish Ratings", f"{nb:+.0f}%", ab.get("label",""), nbcol)}'
+            f'{stat_card("Buy Share", f"{ab.get("bull_share",0):.0f}%", "of all ratings", WHITE)}'
+            f'{stat_card("Avg Price-Target Upside", (f"{up:+.0f}%" if up is not None else "—"), "consensus target vs price", GREEN if (up or 0) > 0 else RED)}'
+            f'</div>', unsafe_allow_html=True)
+        st.caption(f"Sell-side rating distribution and price-target upside across {ab.get('n_names',0)} "
+                   f"US/Canadian large caps (FMP). Rising net-bullish + target upside is a supportive "
+                   f"backdrop; a rolling-over reading often leads price. Analyst sentiment, not EPS revisions.")
 
     # ── Crowding composite ─────────────────────────────────────────────────
     cw = load_crowding()

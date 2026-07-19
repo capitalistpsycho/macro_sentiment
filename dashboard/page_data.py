@@ -132,6 +132,18 @@ def load_allocation() -> dict:
     return {"tilts": suggested_tilts(), "vol": vol_target()}
 
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_analyst_breadth() -> dict:
+    from data.analyst import analyst_breadth
+    return analyst_breadth()
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_valuation() -> dict:
+    from data.valuation import valuation_outlook
+    return valuation_outlook()
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_rate_paths() -> dict:
     from data.rates_path import fed_path, boc_path
