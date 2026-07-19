@@ -11,6 +11,7 @@ from dashboard.components import (
 from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
+    load_correlation,
 )
 from data import store, fixed_income as fi
 
@@ -198,6 +199,19 @@ def render(ctx: dict) -> None:
             st.caption(f"Daily market-based FCI: z-scored short rate, 10Y real yield, HY credit, equity "
                        f"trend and broad USD, weighted by growth contribution (positive = tighter). "
                        f"Contributions: {parts}.")
+
+        # Cross-asset correlation regime.
+        cr = load_correlation()
+        if cr.get("avg_pairwise") is not None:
+            sb = cr.get("stock_bond")
+            sbcol = RED if (sb or 0) > 0.1 else GREEN
+            acol = RED if cr.get("rising") else GREY
+            st.markdown(
+                f'<div style="display:flex;gap:12px;margin:4px 0">'
+                f'{stat_card("Stock–Bond Correlation", fmt_num(sb, 2), "bonds hedging equities?" , sbcol)}'
+                f'{stat_card("Avg Cross-Asset Corr", fmt_num(cr.get("avg_pairwise"), 2), f"prior {fmt_num(cr.get("avg_prior"),2)}", acol)}'
+                f'</div>', unsafe_allow_html=True)
+            st.caption(cr.get("read", ""))
 
         # Stress decomposition: composite + subindices + components
         fs = load_financial_stress()

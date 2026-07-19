@@ -109,6 +109,18 @@ def load_narrative() -> str:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def load_correlation() -> dict:
+    from data.correlations import correlation_state
+    return correlation_state()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_iv_skew(ticker: str = "SPY") -> dict:
+    from data.options import iv_skew
+    return iv_skew(ticker)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_put_call(ticker: str = "SPY") -> dict:
     from data.options import put_call
     return put_call(ticker)

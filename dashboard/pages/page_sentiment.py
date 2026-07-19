@@ -6,7 +6,9 @@ import streamlit as st
 
 from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, AMBER, CARD, BORDER, section_header
 from dashboard.components import mini_gauge, line_chart, stat_card, pct_color, fmt_pct, fmt_num
-from dashboard.page_data import load_metrics, load_sentiment, load_put_call, load_crowding
+from dashboard.page_data import (
+    load_metrics, load_sentiment, load_put_call, load_crowding, load_iv_skew,
+)
 from data import store
 
 FG_ZONES = [
@@ -117,20 +119,27 @@ def render(ctx: dict) -> None:
             unsafe_allow_html=True)
         st.caption("Across sector & benchmark ETFs vs their trailing 52-week range.")
 
-    # ── Options put/call ────────────────────────────────────────────────────
-    st.markdown(section_header("OPTIONS POSITIONING — PUT/CALL (SPY)"), unsafe_allow_html=True)
+    # ── Options put/call + skew ─────────────────────────────────────────────
+    st.markdown(section_header("OPTIONS POSITIONING — PUT/CALL & SKEW (SPY)"), unsafe_allow_html=True)
     pc = load_put_call("SPY")
+    sk = load_iv_skew("SPY")
     if pc and (pc.get("pc_vol") is not None or pc.get("pc_oi") is not None):
         tcol = {"bullish": GREEN, "bearish": RED}.get(pc.get("tone"), GREY)
         vol = pc.get("pc_vol"); oi = pc.get("pc_oi")
         vcol = GREEN if (vol or 1) >= 1.2 else RED if (vol or 1) <= 0.7 else WHITE
-        o1, o2, o3 = st.columns([1, 1, 2])
+        skew = sk.get("skew") if sk else None
+        skcol = RED if (skew or 0) > 8 else GREEN if (skew is not None and skew < 2) else WHITE
+        o1, o2, o4, o3 = st.columns([1, 1, 1, 2])
         with o1:
             st.markdown(stat_card("Put/Call · Volume", fmt_num(vol, 2), "today's flow", vcol),
                         unsafe_allow_html=True)
         with o2:
             st.markdown(stat_card("Put/Call · Open Int.", fmt_num(oi, 2), "standing positioning", WHITE),
                         unsafe_allow_html=True)
+        with o4:
+            skew_sub = (sk.get("tone", "") if sk else "unavailable")
+            st.markdown(stat_card("IV Skew (5% OTM)", (f"{skew:+.1f}" if skew is not None else "—"),
+                                  skew_sub, skcol), unsafe_allow_html=True)
         with o3:
             st.markdown(
                 f'<div style="background:{CARD};border:1px solid {tcol};border-radius:8px;'
