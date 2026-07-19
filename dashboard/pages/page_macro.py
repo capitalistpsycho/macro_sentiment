@@ -12,6 +12,7 @@ from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
     load_correlation, load_regime_transitions, load_allocation, load_rate_paths,
+    load_ensemble,
 )
 from data import store, fixed_income as fi
 
@@ -276,6 +277,7 @@ def render(ctx: dict) -> None:
     with q2:
         if nc:
             st.markdown(_nowcast_detail(nc), unsafe_allow_html=True)
+        st.markdown(_ensemble_box(), unsafe_allow_html=True)
     if sig.get("macro_source") == "FRED":
         st.caption("Growth axis = Chicago Fed National Activity Index (CFNAI, 0 = trend growth) with "
                    "industrial production and jobless-claims confirmation; inflation axis = core CPI "
@@ -288,6 +290,29 @@ def render(ctx: dict) -> None:
     # ── Regime → positioning (transitions, All-Weather tilts, vol target) ───
     if sig.get("macro_source") == "FRED":
         _regime_positioning_section()
+
+
+def _ensemble_box() -> str:
+    e = load_ensemble()
+    if not e.get("consensus"):
+        return ""
+    col = GREEN if e.get("unanimous") else AMBER
+    def chip(lbl, reg):
+        return (f'<div style="display:flex;justify-content:space-between;padding:3px 0;'
+                f'border-bottom:1px solid #1e1e1e"><span style="color:{GREY};font-size:12px">{lbl}</span>'
+                f'<span style="color:{WHITE};font-size:12px">{_REGIME_SHORT.get(reg, reg or "—")}</span></div>')
+    status = ("all three models agree" if e.get("unanimous")
+              else f'{e.get("agreement")} agree — models split')
+    return (
+        f'<div style="background:{CARD};border:1px solid {col};border-radius:8px;padding:12px 16px;'
+        f'margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;'
+        f'margin-bottom:6px"><span style="color:{GOLD};font-size:10px;font-weight:600;'
+        f'text-transform:uppercase;letter-spacing:1px">Regime ensemble</span>'
+        f'<span style="color:{col};font-size:11px">{status}</span></div>'
+        f'{chip("FRED nowcast", e.get("fred"))}{chip("ETF-momentum proxy", e.get("proxy"))}'
+        f'{chip("Probability model", e.get("model"))}'
+        f'<div style="margin-top:6px;color:{GOLD};font-size:12px">Consensus: '
+        f'<b>{_REGIME_SHORT.get(e.get("consensus"), e.get("consensus"))}</b></div></div>')
 
 
 def _regime_positioning_section() -> None:

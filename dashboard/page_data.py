@@ -138,6 +138,18 @@ def load_analyst_breadth() -> dict:
     return analyst_breadth()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_track_record() -> dict:
+    from data.validation import signal_track_record
+    return signal_track_record()
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_ensemble() -> dict:
+    from data.ensemble import ensemble_regime
+    return ensemble_regime()
+
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def load_valuation() -> dict:
     from data.valuation import valuation_outlook

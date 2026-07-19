@@ -13,7 +13,7 @@ from dashboard.components import (
 from dashboard.polaris import render_polaris_bar
 from dashboard.page_data import (
     load_metrics, load_signals, load_context_percentiles, load_backtest,
-    load_narrative, load_analogues, load_valuation,
+    load_narrative, load_analogues, load_valuation, load_track_record,
 )
 
 
@@ -212,6 +212,35 @@ def render(ctx: dict) -> None:
         st.caption("Average forward return and hit rate (% positive) of each index following days "
                    "in each market regime, from the dashboard's signal history. Current regime "
                    "highlighted. Overlapping daily windows — descriptive context, not an iid backtest.")
+
+    # ── Signal track record (self-grading) ─────────────────────────────────
+    tr = load_track_record()
+    rows_tr = {k: v for k, v in tr.items() if not k.startswith("_")}
+    if rows_tr:
+        st.markdown(section_header("SIGNAL TRACK RECORD — DO OUR SIGNALS PREDICT RETURNS?"),
+                    unsafe_allow_html=True)
+        head = ("<tr><th>Signal</th><th style='text-align:right'>Info Coef.</th>"
+                "<th style='text-align:right'>High-reading fwd</th>"
+                "<th style='text-align:right'>Low-reading fwd</th>"
+                "<th style='text-align:right'>Spread</th><th style='text-align:right'>n</th></tr>")
+        body = ""
+        for name, v in rows_tr.items():
+            ic = v["ic"]
+            iccol = GREEN if ic > 0.1 else RED if ic < -0.1 else GREY
+            spcol = GREEN if v["spread"] > 0 else RED
+            body += (f'<tr><td style="font-weight:600">{name}</td>'
+                     f'<td style="text-align:right;color:{iccol}" class="mono">{ic:+.2f}</td>'
+                     f'<td style="text-align:right;color:{pct_color(v["high_mean"])}" class="mono">{fmt_pct(v["high_mean"])} <span style="color:{GREY};font-size:10px">{v["high_hit"]:.0f}%</span></td>'
+                     f'<td style="text-align:right;color:{pct_color(v["low_mean"])}" class="mono">{fmt_pct(v["low_mean"])} <span style="color:{GREY};font-size:10px">{v["low_hit"]:.0f}%</span></td>'
+                     f'<td style="text-align:right;color:{spcol}" class="mono">{fmt_pct(v["spread"])}</td>'
+                     f'<td style="text-align:right;color:{GREY}" class="mono">{v["n"]}</td></tr>')
+        st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                    f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+        st.caption(f"Information coefficient = rank correlation of each signal with the S&P's next "
+                   f"{tr.get('_horizon',21)}-day return; 'High/Low-reading fwd' = average forward return "
+                   f"(+ hit rate) after top- vs bottom-tercile readings. Point-in-time, but a ~15-month "
+                   f"overlapping-window sample — read as an honest self-check, not a verdict. A negative "
+                   f"IC means the signal has been contrarian over this window.")
 
     # ── Historical analogues ───────────────────────────────────────────────
     an = load_analogues()
