@@ -11,7 +11,7 @@ from dashboard.components import (
 from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
-    load_correlation, load_regime_transitions, load_allocation,
+    load_correlation, load_regime_transitions, load_allocation, load_rate_paths,
 )
 from data import store, fixed_income as fi
 
@@ -394,6 +394,20 @@ def _treasury_curve_section() -> None:
                     f'</div>', unsafe_allow_html=True)
         st.caption("Positive slopes = normal/steepening (risk-on, growth). Curvature > 0 = belly "
                    "cheap (policy-tightening pricing).")
+    rp = load_rate_paths()
+    fed = rp.get("fed") or {}
+    gdp = rp.get("gdpnow")
+    if fed.get("policy") is not None:
+        st.markdown(
+            f'<div style="display:flex;gap:12px;margin:6px 0">'
+            f'{stat_card("Fed Funds (effective)", _pct(fed.get("policy")), "current policy", WHITE)}'
+            f'{stat_card("1Y Treasury", _pct(fed.get("y1")), "≈ avg rate next 12m", GOLD)}'
+            f'{stat_card("Market rate path", (f"{fed.get("spread_1y_bp"):+d} bp" if fed.get("spread_1y_bp") is not None else "—"), "1Y vs policy", pct_color(-(fed.get("spread_1y_bp") or 0)))}'
+            f'{stat_card("GDPNow", (_pct(gdp) if gdp is not None else "—"), f"Atlanta Fed · {rp.get("gdpnow_asof","—")}", GREEN if (gdp or 0) > 1 else AMBER)}'
+            f'</div>', unsafe_allow_html=True)
+        st.caption(f"Rate path is curve-implied (Treasuries embed a term premium, so this is a bias, "
+                   f"not an OIS-precise cut count): {fed.get('read','')}. GDPNow = the Atlanta Fed's "
+                   f"real-time GDP nowcast.")
 
 
 def _rates_conditions_section() -> None:
@@ -469,9 +483,11 @@ def _canada_section(m: dict) -> None:
                   f"1M {fmt_num(b.get('usdcad_1m_chg'), 3)}", WHITE),
     ])
     st.markdown(f'<div style="display:flex;gap:12px;margin:6px 0">{tiles}</div>', unsafe_allow_html=True)
+    bp = (load_rate_paths().get("boc") or {})
+    boc_read = f" BoC path: {bp.get('read','')}." if bp.get("read") and bp.get("read") != "—" else ""
     st.caption(f"Government-of-Canada curve (2/5/10Y), CORRA {fmt_num(b.get('corra'),2)}%, and CAD from "
-               f"the Bank of Canada. {cad_read}. The BoC–Fed rate gap is the dominant CAD driver "
-               f"(as of {b.get('as_of','—')}).")
+               f"the Bank of Canada. {cad_read}.{boc_read} The BoC–Fed rate gap is the dominant CAD "
+               f"driver (as of {b.get('as_of','—')}).")
 
 
 def _pct(v) -> str:

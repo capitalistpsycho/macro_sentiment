@@ -133,6 +133,16 @@ def load_allocation() -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def load_rate_paths() -> dict:
+    from data.rates_path import fed_path, boc_path
+    from data import fred
+    gdp = fred.series("GDPNOW")
+    return {"fed": fed_path(), "boc": boc_path(),
+            "gdpnow": (round(float(gdp.iloc[-1]), 2) if not gdp.empty else None),
+            "gdpnow_asof": (gdp.index[-1].strftime("%Y-%m-%d") if not gdp.empty else None)}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_put_call(ticker: str = "SPY") -> dict:
     from data.options import put_call
     return put_call(ticker)

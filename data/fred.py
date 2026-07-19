@@ -33,6 +33,7 @@ SERIES: dict[str, tuple[str, str]] = {
     "T5YIE":        ("5y Breakeven Inflation",    "inflation"),
     "T5YIFR":       ("5y5y Forward Inflation",    "inflation"),
     "CFNAI":        ("Chicago Fed Nat. Activity", "growth"),
+    "GDPNOW":        ("Atlanta Fed GDPNow",         "growth"),
     "INDPRO":       ("Industrial Production",      "growth"),
     "PAYEMS":       ("Nonfarm Payrolls",          "growth"),
     "ICSA":         ("Initial Jobless Claims",     "growth"),
@@ -55,6 +56,8 @@ SERIES: dict[str, tuple[str, str]] = {
     "BAMLH0A3HYC":  ("CCC OAS",                    "credit_rating"),
     "DGS10":        ("US 10Y Treasury",            "rates"),
     "T10Y2Y":       ("10Y-2Y Spread",              "rates"),
+    "FEDFUNDS":     ("Fed Funds Effective",        "rates"),
+    "DFF":          ("Fed Funds Effective (daily)", "rates"),
     # Real yields (TIPS) — the true driver behind gold and long-duration growth.
     "DFII10":       ("US 10Y Real Yield",          "rates"),
     "DFII5":        ("US 5Y Real Yield",           "rates"),
