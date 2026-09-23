@@ -44,9 +44,12 @@ jobs:
       - name: Run macro refresh
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          # An unset secret resolves to "", which config.secrets treats as absent,
+          # so this line is inert until the repo secret exists — then the UST
+          # curve and analyst breadth start refreshing with no further edit.
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           # Optional: uncomment if you add these repo secrets later.
           # POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-          # FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           # SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python run_macro.py --full
