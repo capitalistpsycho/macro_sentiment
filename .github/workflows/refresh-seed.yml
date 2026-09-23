@@ -57,11 +57,21 @@ jobs:
       - name: Update seed snapshot
         run: cp cache/macro.db data/seed_macro.db
 
+      # Every source degrades gracefully when its key is missing, so a green run
+      # proves nothing about coverage — FMP silently skipped for two months. This
+      # records, in committed data rather than auth-gated logs, which keys the run
+      # actually had and how current each source is.
+      - name: Record source coverage
+        env:
+          FMP_KEY_PRESENT: ${{ secrets.FMP_API_KEY != '' }}
+          FRED_KEY_PRESENT: ${{ secrets.FRED_API_KEY != '' }}
+        run: python scripts/record_coverage.py
+
       - name: Commit & push if changed
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/seed_macro.db
+          git add data/seed_macro.db data/refresh_status.json
           if git diff --cached --quiet; then
             echo "Seed unchanged — nothing to commit."
           else
