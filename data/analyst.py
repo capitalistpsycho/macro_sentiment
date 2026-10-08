@@ -6,7 +6,11 @@ per-name analyst data doesn't roll up to an index, so we aggregate a curated
 large-cap basket (US mega-caps + key Canadian names for the TSX tilt): the net
 bullish share of ratings and the average price-target upside. It's an
 analyst-sentiment/breadth read (rating distribution + targets), not a formal EPS
-revision series. Cached long — it's ~2 API calls per name.
+revision series. Cached long — it's ~3 API calls per name.
+
+The FMP plan on hand rejects most Canadian symbols (HTTP 402 "Premium Query
+Parameter"), so any name FMP refuses falls back to Yahoo's analyst summary on
+its TSX listing — same rating buckets, mean target vs current price.
 """
 
 from __future__ import annotations
@@ -22,13 +26,51 @@ FMP_BASE = "https://financialmodelingprep.com/stable"
 BASKET = [
     ("AAPL", "US"), ("MSFT", "US"), ("NVDA", "US"), ("AMZN", "US"),
     ("GOOGL", "US"), ("META", "US"), ("JPM", "US"), ("XOM", "US"),
-    # Canadian names via their NYSE dual listings (FMP covers these, not ".TO").
+    # Canadian names via their NYSE dual listings; RY/TD/CNQ are plan-gated on FMP
+# and come from Yahoo's TSX listing instead (see _yahoo_name).
     ("RY", "CA"), ("TD", "CA"), ("CNQ", "CA"), ("SHOP", "CA"),
 ]
 
 
 def _key() -> str:
     return get_secret("FMP_API_KEY")
+
+
+YAHOO_SYMBOL = {"RY": "RY.TO", "TD": "TD.TO", "CNQ": "CNQ.TO", "SHOP": "SHOP.TO"}
+
+
+def _fmp(sess, endpoint: str, sym: str, key: str) -> list:
+    """GET an FMP stable endpoint; raises on non-200 (402 = plan-gated symbol)."""
+    r = sess.get(f"{FMP_BASE}/{endpoint}",
+                 params={"symbol": sym, "apikey": key}, timeout=15)
+    if r.status_code != 200:
+        raise PermissionError(f"FMP {endpoint} HTTP {r.status_code}")
+    return r.json() or []
+
+
+def _fmp_name(sess, sym: str, key: str) -> tuple[dict | None, float | None]:
+    """(rating counts, price-target upside %) from FMP."""
+    g = _fmp(sess, "grades-consensus", sym, key)
+    counts = g[0] if g else None
+    pt = _fmp(sess, "price-target-summary", sym, key)
+    q = _fmp(sess, "quote", sym, key)
+    tgt = pt[0].get("lastQuarterAvgPriceTarget") if pt else None
+    px = q[0].get("price") if q else None
+    return counts, ((tgt / px - 1) * 100 if tgt and px else None)
+
+
+def _yahoo_name(sym: str) -> tuple[dict | None, float | None]:
+    """Same shape as _fmp_name, from Yahoo's analyst summary (current month)."""
+    import yfinance as yf
+    t = yf.Ticker(YAHOO_SYMBOL.get(sym, sym))
+    rec = t.recommendations_summary
+    counts = None
+    if rec is not None and not rec.empty:
+        row = rec[rec["period"] == "0m"]
+        counts = (row if not row.empty else rec).iloc[0].to_dict()
+    pt = t.analyst_price_targets or {}
+    tgt, px = pt.get("mean"), pt.get("current")
+    return counts, ((tgt / px - 1) * 100 if tgt and px else None)
 
 
 def analyst_breadth() -> dict:
@@ -41,25 +83,21 @@ def analyst_breadth() -> dict:
     upsides, names = [], 0
     for sym, _ in BASKET:
         try:
-            g = sess.get(f"{FMP_BASE}/grades-consensus",
-                         params={"symbol": sym, "apikey": key}, timeout=15).json()
-            if g:
-                d = g[0]
-                b = (d.get("strongBuy", 0) or 0) + (d.get("buy", 0) or 0)
-                s = (d.get("sell", 0) or 0) + (d.get("strongSell", 0) or 0)
-                h = d.get("hold", 0) or 0
-                bull += b; bear += s; neutral += h
-                names += 1
-            pt = sess.get(f"{FMP_BASE}/price-target-summary",
-                          params={"symbol": sym, "apikey": key}, timeout=15).json()
-            tgt = (pt[0].get("lastQuarterAvgPriceTarget") if pt else None)
-            q = sess.get(f"{FMP_BASE}/quote",
-                         params={"symbol": sym, "apikey": key}, timeout=15).json()
-            px = (q[0].get("price") if q else None)
-            if tgt and px:
-                upsides.append((tgt / px - 1) * 100)
+            try:
+                counts, upside = _fmp_name(sess, sym, key)
+            except (PermissionError, ValueError) as exc:
+                logger.debug("analyst breadth %s: FMP unavailable (%s), using Yahoo", sym, exc)
+                counts, upside = _yahoo_name(sym)
         except Exception as exc:
-            logger.warning("analyst breadth %s failed: %s", sym, exc)
+            logger.info("analyst breadth %s skipped: %s", sym, exc)
+            continue
+        if counts:
+            bull += (counts.get("strongBuy", 0) or 0) + (counts.get("buy", 0) or 0)
+            bear += (counts.get("sell", 0) or 0) + (counts.get("strongSell", 0) or 0)
+            neutral += counts.get("hold", 0) or 0
+            names += 1
+        if upside is not None:
+            upsides.append(upside)
     total = bull + bear + neutral
     if not total:
         return {}

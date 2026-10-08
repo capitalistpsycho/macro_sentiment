@@ -114,10 +114,31 @@ def load_correlation() -> dict:
     return correlation_state()
 
 
+class _Empty(Exception):
+    """Raised inside a cached loader so st.cache_data doesn't store a blank result."""
+
+
+def _uncached_if_empty(loader, *args) -> dict:
+    # Live Yahoo option chains fail transiently (rate limits, off-hours); caching
+    # that {} would blank the card for the whole TTL, so retry on the next rerun.
+    try:
+        return loader(*args)
+    except _Empty:
+        return {}
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_iv_skew(ticker: str = "SPY") -> dict:
+def _iv_skew_cached(ticker: str) -> dict:
     from data.options import iv_skew
-    return iv_skew(ticker)
+    return iv_skew(ticker) or _raise_empty()
+
+
+def _raise_empty():
+    raise _Empty
+
+
+def load_iv_skew(ticker: str = "SPY") -> dict:
+    return _uncached_if_empty(_iv_skew_cached, ticker)
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -167,6 +188,10 @@ def load_rate_paths() -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_put_call(ticker: str = "SPY") -> dict:
+def _put_call_cached(ticker: str) -> dict:
     from data.options import put_call
-    return put_call(ticker)
+    return put_call(ticker) or _raise_empty()
+
+
+def load_put_call(ticker: str = "SPY") -> dict:
+    return _uncached_if_empty(_put_call_cached, ticker)

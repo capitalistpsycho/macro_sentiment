@@ -14,21 +14,64 @@ by both volume (today's flow) and open interest (standing positioning).
 from __future__ import annotations
 
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+# put_call and iv_skew load on the same page within a second of each other and
+# hit the same SPY chains; Yahoo rate-limits that burst. Memoise the Ticker's
+# expiry list and each chain briefly so the second caller reuses the first's.
+_MEMO_TTL = 300
+_memo: dict[tuple, tuple[float, object]] = {}
+
+
+def _retry(fn, *args):
+    """Call fn, backing off once if Yahoo rate-limits ("Too Many Requests")."""
+    from yfinance.exceptions import YFRateLimitError
+    try:
+        return fn(*args)
+    except YFRateLimitError:
+        time.sleep(3)
+        return fn(*args)
+
+
+def _cached(key: tuple, fn, *args):
+    hit = _memo.get(key)
+    if hit and time.time() - hit[0] < _MEMO_TTL:
+        return hit[1]
+    val = _retry(fn, *args)
+    _memo[key] = (time.time(), val)
+    return val
+
+
+def _expiries(ticker: str) -> list[str]:
+    import yfinance as yf
+    return _cached(("exps", ticker), lambda: list(yf.Ticker(ticker).options or []))
+
+
+def _chain(ticker: str, expiry: str):
+    import yfinance as yf
+    return _cached(("chain", ticker, expiry), lambda: yf.Ticker(ticker).option_chain(expiry))
+
+
+def _log_failure(what: str, ticker: str, exc: Exception) -> None:
+    from yfinance.exceptions import YFRateLimitError
+    if isinstance(exc, YFRateLimitError):
+        # Transient and expected on Yahoo's free feed; the page shows "unavailable".
+        logger.info("%s for %s: Yahoo rate-limited, skipping this refresh", what, ticker)
+    else:
+        logger.warning("%s for %s failed: %s", what, ticker, exc)
 
 
 def put_call(ticker: str = "SPY", expiries: int = 3) -> dict:
     """Aggregate put/call ratios across the nearest `expiries` expirations."""
     try:
-        import yfinance as yf
-        t = yf.Ticker(ticker)
-        exps = list(t.options or [])[:expiries]
+        exps = _expiries(ticker)[:expiries]
         if not exps:
             return {}
         pv = cv = poi = coi = 0.0
         for e in exps:
-            ch = t.option_chain(e)
+            ch = _chain(ticker, e)
             pv += float(ch.puts["volume"].fillna(0).sum())
             cv += float(ch.calls["volume"].fillna(0).sum())
             poi += float(ch.puts["openInterest"].fillna(0).sum())
@@ -49,7 +92,7 @@ def put_call(ticker: str = "SPY", expiries: int = 3) -> dict:
             "expiries": exps, "tone": tone, "read": read,
         }
     except Exception as exc:
-        logger.warning("put/call for %s failed: %s", ticker, exc)
+        _log_failure("put/call", ticker, exc)
         return {}
 
 
@@ -65,7 +108,7 @@ def iv_skew(ticker: str = "SPY") -> dict:
         from datetime import datetime
         import yfinance as yf
         t = yf.Ticker(ticker)
-        exps = list(t.options or [])
+        exps = _expiries(ticker)
         if not exps:
             return {}
         spot = None
@@ -95,7 +138,7 @@ def iv_skew(ticker: str = "SPY") -> dict:
             return float(df.loc[i, "impliedVolatility"])
 
         for e in ordered[:4]:
-            ch = t.option_chain(e)
+            ch = _chain(ticker, e)
             puts, calls = ch.puts, ch.calls
             if spot is None and not calls.empty:
                 spot = float(calls["strike"].median())
@@ -117,5 +160,5 @@ def iv_skew(ticker: str = "SPY") -> dict:
             }
         return {}
     except Exception as exc:
-        logger.warning("iv_skew for %s failed: %s", ticker, exc)
+        _log_failure("iv_skew", ticker, exc)
         return {}
