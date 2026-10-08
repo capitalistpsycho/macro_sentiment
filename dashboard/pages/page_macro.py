@@ -303,6 +303,15 @@ def _ensemble_box() -> str:
                 f'<span style="color:{WHITE};font-size:12px">{_REGIME_SHORT.get(reg, reg or "—")}</span></div>')
     status = ("all three models agree" if e.get("unanimous")
               else f'{e.get("agreement")} agree — models split')
+    s = e.get("stress") or {}
+    stress_row = ""
+    if s.get("state"):
+        scol = RED if s["state"] == "STRESSED" else GREEN
+        stress_row = (
+            f'<div style="margin-top:6px;color:{GREY};font-size:12px">Market state (WK-means): '
+            f'<b style="color:{scol}">{s["state"]}</b> · {s["p_stressed"]:.0f}% stress-like '
+            f'<span style="font-size:11px">(calm ≈{s["calm_vol"]}% vol, stressed ≈{s["stress_vol"]}%)'
+            f'</span></div>')
     return (
         f'<div style="background:{CARD};border:1px solid {col};border-radius:8px;padding:12px 16px;'
         f'margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;'
@@ -312,7 +321,7 @@ def _ensemble_box() -> str:
         f'{chip("FRED nowcast", e.get("fred"))}{chip("ETF-momentum proxy", e.get("proxy"))}'
         f'{chip("Probability model", e.get("model"))}'
         f'<div style="margin-top:6px;color:{GOLD};font-size:12px">Consensus: '
-        f'<b>{_REGIME_SHORT.get(e.get("consensus"), e.get("consensus"))}</b></div></div>')
+        f'<b>{_REGIME_SHORT.get(e.get("consensus"), e.get("consensus"))}</b></div>{stress_row}</div>')
 
 
 def _regime_positioning_section() -> None:

@@ -43,7 +43,17 @@ def ensemble_regime(as_of: str | None = None) -> dict:
         return {}
     cnt = Counter(votes)
     consensus, top_n = cnt.most_common(1)[0]
+
+    # Market-state overlay (calm/stressed) — a different label space, so not a vote.
+    stress = {}
+    if as_of is None:  # ponytail: latest-only; wk_regime has no as_of yet
+        try:
+            from data.wk_regime import wk_regime
+            stress = wk_regime()
+        except Exception:
+            pass
     return {
+        "stress": stress,
         "fred": fred_reg,
         "proxy": proxy_reg,
         "model": model_reg,
