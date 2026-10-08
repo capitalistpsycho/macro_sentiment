@@ -76,6 +76,19 @@ def metric(metrics: dict, ticker: str, field: str = "close"):
     return v
 
 
+def long_closes(ticker: str, as_of: str | None = None) -> pd.DataFrame:
+    """[date, close] from the max-length long_closes table (empty if absent)."""
+    try:
+        with get_db() as c:
+            df = pd.read_sql_query(
+                "SELECT date, close FROM long_closes WHERE ticker=? AND date<=? ORDER BY date",
+                c, params=(ticker, as_of or "9999-12-31"))
+    except Exception:
+        return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
 def series(ticker: str, days: int | None = None, as_of: str | None = None) -> pd.DataFrame:
     """Return [date, close, ma20, ma50, ma200, rsi14, vol20d] for a ticker.
 

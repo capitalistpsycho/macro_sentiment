@@ -130,6 +130,15 @@ def init_db() -> None:
             PRIMARY KEY (market, report_date)
         );
 
+        -- Max-length close history for a few anchors (wk_regime), kept apart so
+        -- daily_prices stays 2y and the metrics pipeline is untouched.
+        CREATE TABLE IF NOT EXISTS long_closes (
+            ticker     TEXT NOT NULL,
+            date       TEXT NOT NULL,
+            close      REAL,
+            PRIMARY KEY (ticker, date)
+        );
+
         CREATE TABLE IF NOT EXISTS pm_journal (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             ts        TEXT,
@@ -188,6 +197,16 @@ def store_signal_scores(d: dict) -> None:
     with get_db() as c:
         c.execute(f"INSERT OR REPLACE INTO signal_scores ({','.join(cols)}) "
                   f"VALUES ({placeholders})", vals)
+
+
+def upsert_long_closes(rows: list[tuple]) -> int:
+    """rows: (ticker, date, close)."""
+    if not rows:
+        return 0
+    with get_db() as c:
+        c.executemany("INSERT OR REPLACE INTO long_closes (ticker, date, close) "
+                      "VALUES (?,?,?)", rows)
+    return len(rows)
 
 
 def upsert_fred(rows: list[tuple]) -> int:

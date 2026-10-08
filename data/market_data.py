@@ -169,3 +169,23 @@ def refresh_prices(period: str = "2y") -> dict:
     n = upsert_daily_prices(all_rows)
     logger.info("Stored %d rows for %d tickers (%d missing).", n, len(ok), len(missing))
     return {"tickers": len(ok), "rows": n, "missing": missing}
+
+
+LONG_TICKER = "^GSPC"  # S&P 500 index — daily back to 1927, vs SPY from 1993
+
+
+def refresh_long_history(ticker: str = LONG_TICKER) -> int:
+    """Persist the full available close history for `ticker` into long_closes."""
+    import yfinance as yf
+    from data.db import upsert_long_closes
+
+    init_db()
+    raw = yf.download(ticker, period="max", interval="1d", auto_adjust=True, progress=False)
+    if raw is None or raw.empty:
+        return 0
+    close = raw["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    close = close.dropna()
+    return upsert_long_closes([(ticker, d.strftime("%Y-%m-%d"), float(v))
+                               for d, v in close.items()])

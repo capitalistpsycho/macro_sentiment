@@ -41,8 +41,15 @@ def wk_means(W: np.ndarray, k: int = 2, seed: int = 0) -> tuple[np.ndarray, np.n
     return C, lab
 
 
-def wk_regime(ticker: str = "SPY") -> dict:
-    px = store.series(ticker)
+def wk_regime(as_of: str | None = None) -> dict:
+    """Calm/stressed read for the latest (or `as_of`) 20-day window of S&P 500 returns.
+
+    Uses the max-length ^GSPC history (1927+) so "stressed" means crisis-grade,
+    falling back to the 2y SPY series in daily_prices if long_closes is empty.
+    """
+    src, px = "^GSPC", store.long_closes("^GSPC", as_of=as_of)
+    if len(px) < WINDOW * 8:
+        src, px = "SPY", store.series("SPY", as_of=as_of)
     if px.empty or len(px) < WINDOW * 8:
         return {}
     r = np.diff(np.log(px["close"].astype(float).to_numpy()))
@@ -50,12 +57,18 @@ def wk_regime(ticker: str = "SPY") -> dict:
     hist = _windows(r[:-WINDOW])  # past windows only — no look-ahead
     C, lab = wk_means(hist)
     d = np.abs(C - today).mean(axis=1)
+    # Position along calm→stressed centroid axis in quantile space: 0 = calm,
+    # 1 = typical stress, >1 = beyond it (a distance ratio saturates near 0.5 in crashes).
+    axis = C[1] - C[0]
+    intensity = float((today - C[0]) @ axis / (axis @ axis))
     return {
         "state": "STRESSED" if d[1] < d[0] else "CALM",
-        "p_stressed": round(float(d[0] / (d[0] + d[1])) * 100, 0),
+        "intensity": round(intensity, 2),
         "calm_vol": round(float(C[0].std() * np.sqrt(252) * 100), 1),
         "stress_vol": round(float(C[1].std() * np.sqrt(252) * 100), 1),
         "stressed_share": round(float((lab == 1).mean()) * 100, 0),
+        "source": src,
+        "since": px["date"].iloc[0].strftime("%Y"),
     }
 
 

@@ -309,8 +309,10 @@ def _ensemble_box() -> str:
         scol = RED if s["state"] == "STRESSED" else GREEN
         stress_row = (
             f'<div style="margin-top:6px;color:{GREY};font-size:12px">Market state (WK-means): '
-            f'<b style="color:{scol}">{s["state"]}</b> · {s["p_stressed"]:.0f}% stress-like '
-            f'<span style="font-size:11px">(calm ≈{s["calm_vol"]}% vol, stressed ≈{s["stress_vol"]}%)'
+            f'<b style="color:{scol}">{s["state"]}</b> · stress intensity {s["intensity"]:.2f} '
+            f'<span style="font-size:11px">(0 = calm, 1 = typical stress)</span> '
+            f'<span style="font-size:11px">(calm ≈{s["calm_vol"]}% vol, stressed ≈{s["stress_vol"]}% · '
+            f'{s.get("source", "SPY")} since {s.get("since", "—")})'
             f'</span></div>')
     return (
         f'<div style="background:{CARD};border:1px solid {col};border-radius:8px;padding:12px 16px;'

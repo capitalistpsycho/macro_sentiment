@@ -42,6 +42,13 @@ def main() -> int:
         log.error("No price data fetched — aborting. Check network / yfinance.")
         return 1
 
+    # 1a. Long S&P 500 history for the WK-means market-state model
+    try:
+        from data.market_data import refresh_long_history
+        log.info("Long history: %d rows.", refresh_long_history())
+    except Exception as exc:
+        log.warning("Long history refresh failed (continuing): %s", exc)
+
     # 1b. FRED macro data (growth, inflation, financial conditions)
     try:
         from data.fred import refresh_fred
