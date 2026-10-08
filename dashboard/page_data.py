@@ -171,6 +171,12 @@ def load_ensemble() -> dict:
     return ensemble_regime()
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_wk_history():
+    from data.wk_regime import wk_history
+    return wk_history()
+
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def load_valuation() -> dict:
     from data.valuation import valuation_outlook

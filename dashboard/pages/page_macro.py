@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, AMBER, CARD, BORDER, section_header
@@ -12,7 +13,7 @@ from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
     load_correlation, load_regime_transitions, load_allocation, load_rate_paths,
-    load_ensemble,
+    load_ensemble, load_wk_history,
 )
 from data import store, fixed_income as fi
 
@@ -287,9 +288,50 @@ def render(ctx: dict) -> None:
         st.caption("FRED macro data unavailable — showing the ETF-momentum proxy regime. "
                    "Set FRED_API_KEY to enable the real growth × inflation nowcast.")
 
+    # ── Market state — WK-means stress intensity ───────────────────────────
+    _wk_section()
+
     # ── Regime → positioning (transitions, All-Weather tilts, vol target) ───
     if sig.get("macro_source") == "FRED":
         _regime_positioning_section()
+
+
+def _wk_section() -> None:
+    s = (load_ensemble().get("stress") or {})
+    h = load_wk_history()
+    if not s.get("state") or h.empty:
+        return
+    st.markdown(section_header("MARKET STATE — WK-MEANS STRESS INTENSITY"), unsafe_allow_html=True)
+
+    stressed = s["state"] == "STRESSED"
+    flip = h["stressed"].to_numpy()[::-1] != stressed  # True where the state differed
+    streak = max(int(flip.argmax()) if flip.any() else len(flip), 1)
+    def chg(v):
+        return f'{v:+.2f}', (RED if v > 0 else GREEN if v < 0 else GREY)
+    c = st.columns(4)
+    c[0].markdown(stat_card("Stress intensity", f'{s["intensity"]:.2f}', s["state"],
+                            RED if stressed else GREEN), unsafe_allow_html=True)
+    v, col = chg(s["chg_1d"])
+    c[1].markdown(stat_card("1-day change", v, "vs yesterday's window", col), unsafe_allow_html=True)
+    v, col = chg(s["chg_5d"])
+    c[2].markdown(stat_card("5-day change", v, "vs a week ago", col), unsafe_allow_html=True)
+    c[3].markdown(stat_card("Days in state", f"{streak:,}", f"{s['state'].lower()} streak", WHITE),
+                  unsafe_allow_html=True)
+
+    rng = st.radio("Range", ["1Y", "5Y", "20Y", "Max"], horizontal=True, index=1,
+                   key="wk_range", label_visibility="collapsed")
+    if rng != "Max":
+        h = h[h["date"] >= h["date"].iloc[-1] - pd.DateOffset(years=int(rng[:-1]))]
+    fig = line_chart([{"x": h["date"], "y": h["intensity"], "name": "Stress intensity",
+                       "color": GOLD, "width": 1.5}],
+                     height=300, showlegend=False,
+                     hlines=[{"y": 0, "label": "Calm", "color": GREEN},
+                             {"y": 1, "label": "Typical stress", "color": RED}])
+    st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+    st.caption(f"Wasserstein k-means on rolling 20-day S&P 500 return distributions "
+               f"({s.get('source')} since {s.get('since')}). 0 = calm-cluster centre, "
+               f"1 = typical stressed-cluster centre; above 1 = worse than a typical stress spell "
+               f"(COVID peaked ≈6, 2008 ≈5.5). Red change = moving toward stress.")
 
 
 def _ensemble_box() -> str:

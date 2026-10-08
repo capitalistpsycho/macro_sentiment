@@ -13,6 +13,7 @@ today's window is assigned.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from data import store
 
@@ -41,29 +42,60 @@ def wk_means(W: np.ndarray, k: int = 2, seed: int = 0) -> tuple[np.ndarray, np.n
     return C, lab
 
 
+def _intensity(S: np.ndarray, C: np.ndarray) -> np.ndarray:
+    """Projection of sorted windows onto the calm→stressed centroid axis."""
+    axis = C[1] - C[0]
+    return (S - C[0]) @ axis / (axis @ axis)
+
+
+def _load(as_of: str | None):
+    src, px = "^GSPC", store.long_closes("^GSPC", as_of=as_of)
+    if len(px) < WINDOW * 8:
+        src, px = "SPY", store.series("SPY", as_of=as_of)
+    return src, px
+
+
+def wk_history(as_of: str | None = None) -> pd.DataFrame:
+    """Daily [date, intensity, stressed] for every trailing 20-day window.
+
+    ponytail: centroids fit once on the whole history (in-sample) — fine for a
+    chart; the live read in wk_regime() is the point-in-time one.
+    """
+    _, px = _load(as_of)
+    if px.empty or len(px) < WINDOW * 8:
+        return pd.DataFrame()
+    r = np.diff(np.log(px["close"].astype(float).to_numpy()))
+    S = np.sort(np.lib.stride_tricks.sliding_window_view(r, WINDOW), axis=1)
+    C, _ = wk_means(S[::STEP])
+    d = np.abs(S[:, None, :] - C[None]).mean(axis=2)
+    return pd.DataFrame({"date": px["date"].iloc[WINDOW:].to_numpy(),
+                         "intensity": _intensity(S, C), "stressed": d[:, 1] < d[:, 0]})
+
+
 def wk_regime(as_of: str | None = None) -> dict:
     """Calm/stressed read for the latest (or `as_of`) 20-day window of S&P 500 returns.
 
     Uses the max-length ^GSPC history (1927+) so "stressed" means crisis-grade,
     falling back to the 2y SPY series in daily_prices if long_closes is empty.
     """
-    src, px = "^GSPC", store.long_closes("^GSPC", as_of=as_of)
-    if len(px) < WINDOW * 8:
-        src, px = "SPY", store.series("SPY", as_of=as_of)
+    src, px = _load(as_of)
     if px.empty or len(px) < WINDOW * 8:
         return {}
     r = np.diff(np.log(px["close"].astype(float).to_numpy()))
-    today = np.sort(r[-WINDOW:])
     hist = _windows(r[:-WINDOW])  # past windows only — no look-ahead
     C, lab = wk_means(hist)
+    # Last 6 trailing windows (t-5 … t) scored on the same point-in-time centroids.
+    recent = np.sort(np.lib.stride_tricks.sliding_window_view(r[-WINDOW - 5:], WINDOW), axis=1)
+    today = recent[-1]
     d = np.abs(C - today).mean(axis=1)
     # Position along calm→stressed centroid axis in quantile space: 0 = calm,
     # 1 = typical stress, >1 = beyond it (a distance ratio saturates near 0.5 in crashes).
-    axis = C[1] - C[0]
-    intensity = float((today - C[0]) @ axis / (axis @ axis))
+    inten = _intensity(recent, C)
     return {
         "state": "STRESSED" if d[1] < d[0] else "CALM",
-        "intensity": round(intensity, 2),
+        "intensity": round(float(inten[-1]), 2),
+        "chg_1d": round(float(inten[-1] - inten[-2]), 2),
+        "chg_5d": round(float(inten[-1] - inten[0]), 2),
         "calm_vol": round(float(C[0].std() * np.sqrt(252) * 100), 1),
         "stress_vol": round(float(C[1].std() * np.sqrt(252) * 100), 1),
         "stressed_share": round(float((lab == 1).mean()) * 100, 0),
