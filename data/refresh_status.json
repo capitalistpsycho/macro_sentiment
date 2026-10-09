@@ -1,13 +1,13 @@
 {
-  "refreshed_at": "2026-10-08T02:11:43Z",
+  "refreshed_at": "2026-10-09T02:24:55Z",
   "keys_present": {
     "FRED_API_KEY": false,
     "FMP_API_KEY": false
   },
   "coverage": {
     "prices": {
-      "rows": 56504,
-      "latest": "2026-10-08"
+      "rows": 56602,
+      "latest": "2026-10-09"
     },
     "fred": {
       "rows": 26541,
@@ -18,12 +18,12 @@
       "latest": "2026-09-18"
     },
     "boc": {
-      "rows": 9349,
-      "latest": "2026-10-07"
+      "rows": 9355,
+      "latest": "2026-10-08"
     },
     "signals": {
-      "rows": 393,
-      "latest": "2026-10-08"
+      "rows": 394,
+      "latest": "2026-10-09"
     },
     "cot": {
       "rows": 696,
