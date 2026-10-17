@@ -172,12 +172,24 @@ def latest(series_id: str, as_of: str | None = None):
     return float(s.iloc[-1]) if not s.empty else None
 
 
+def monthly_filled(s: pd.Series) -> pd.Series:
+    """Monthly series on a complete month grid, gaps linearly interpolated.
+
+    Positional lookbacks (iloc[-13]) silently become 13-month changes when a print
+    is missing — e.g. Oct-2025 CPI/UNRATE were never published (shutdown) — so
+    every month-over-month-N comparison goes through this date-based grid.
+    """
+    if s.empty:
+        return s
+    return s.resample("MS").mean().interpolate(limit_area="inside")
+
+
 def yoy(series_id: str, as_of: str | None = None) -> float | None:
-    """Year-over-year % change of a monthly series."""
-    s = series(series_id, as_of=as_of)
-    if len(s) < 13:
+    """Year-over-year % change of a monthly series (date-based, gap-safe)."""
+    m = monthly_filled(series(series_id, as_of=as_of))
+    if len(m) < 13:
         return None
-    now, prev = s.iloc[-1], s.iloc[-13]
+    now, prev = m.iloc[-1], m.iloc[-13]
     return round((now / prev - 1) * 100, 2) if prev else None
 
 
@@ -251,8 +263,9 @@ def macro_nowcast(as_of: str | None = None) -> dict:
     # ── Inflation axis ────────────────────────────────────────────────────────
     core_yoy = yoy("CPILFESL", as_of=as_of)
     core_yoy_6m_ago = None
-    if len(core) >= 19:
-        core_yoy_6m_ago = round((core.iloc[-7] / core.iloc[-19] - 1) * 100, 2)
+    core_m = monthly_filled(core)
+    if len(core_m) >= 19:
+        core_yoy_6m_ago = round((core_m.iloc[-7] / core_m.iloc[-19] - 1) * 100, 2)
     breakeven = latest("T10YIE", as_of=as_of)
     accel_pp = (core_yoy - core_yoy_6m_ago) if (core_yoy is not None and core_yoy_6m_ago is not None) else None
 

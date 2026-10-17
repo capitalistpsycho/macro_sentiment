@@ -207,6 +207,24 @@ def load_uncertainty() -> dict:
     return uncertainty()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_inflation_nowcast() -> dict:
+    from data.nowcasts import inflation_nowcast
+    return inflation_nowcast()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_macro_momentum() -> dict:
+    from data.nowcasts import macro_momentum
+    return macro_momentum()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_fragility() -> dict:
+    from data.fragility import fragility
+    return fragility()
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def load_ensemble() -> dict:
     from data.ensemble import ensemble_regime

@@ -14,7 +14,8 @@ from dashboard.page_data import (
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
     load_correlation, load_regime_transitions, load_allocation, load_rate_paths,
     load_ensemble, load_wk_history, load_recession_risk, load_growth_at_risk,
-    load_term_premium, load_net_liquidity,
+    load_term_premium, load_net_liquidity, load_inflation_nowcast, load_macro_momentum,
+    load_fragility,
 )
 from data import store, fixed_income as fi
 
@@ -289,8 +290,14 @@ def render(ctx: dict) -> None:
         st.caption("FRED macro data unavailable — showing the ETF-momentum proxy regime. "
                    "Set FRED_API_KEY to enable the real growth × inflation nowcast.")
 
+    # ── Nowcasts: inflation before the print + macro momentum ──────────────
+    _nowcast_section()
+
     # ── Market state — WK-means stress intensity ───────────────────────────
     _wk_section()
+
+    # ── Systemic fragility: absorption ratio + turbulence ──────────────────
+    _fragility_section()
 
     # ── Downside risk: recession probability + growth-at-risk ──────────────
     _recession_gar_section()
@@ -301,6 +308,76 @@ def render(ctx: dict) -> None:
     # ── Regime → positioning (transitions, All-Weather tilts, vol target) ───
     if sig.get("macro_source") == "FRED":
         _regime_positioning_section()
+
+
+def _nowcast_section() -> None:
+    inf, mom = load_inflation_nowcast(), load_macro_momentum()
+    if not inf and not mom:
+        return
+    st.markdown(section_header("NOWCASTS — INFLATION BEFORE THE PRINT & MACRO MOMENTUM"),
+                unsafe_allow_html=True)
+    a, b = st.columns(2)
+    with a:
+        if inf:
+            c = st.columns(3)
+            c[0].markdown(stat_card(f"Headline CPI {inf['target']}", f"{inf['headline_mm']:+.2f}% m/m",
+                                    f"≈ {inf['headline_yoy']:.2f}% y/y (last {inf['last_headline_yoy']:.2f}%)"
+                                    if inf.get("headline_yoy") is not None else "", WHITE), unsafe_allow_html=True)
+            c[1].markdown(stat_card(f"Core CPI {inf['target']}", f"{inf['core_mm']:+.2f}% m/m",
+                                    f"≈ {inf['core_yoy']:.2f}% y/y (last {inf['last_core_yoy']:.2f}%)"
+                                    if inf.get("core_yoy") is not None else "", WHITE), unsafe_allow_html=True)
+            c[2].markdown(stat_card("Gasoline MTD", f"{inf['gas_mm']:+.1f}%",
+                                    f"{inf['gas_weeks']} weekly prints vs {inf['last_month']}",
+                                    RED if inf["gas_mm"] > 0 else GREEN), unsafe_allow_html=True)
+            st.caption("Cleveland Fed method (Knotek & Zaman), simplified: core and food = trailing 12-month average "
+                       "monthly change; gasoline = month-to-date retail prices — the fast-moving piece. Beats lagged CPI "
+                       "for headline inflation; the regime's inflation axis still uses released data.")
+    with b:
+        if mom:
+            rows = ""
+            for v in mom["indicators"].values():
+                z = v["z"]
+                rows += (f'<tr><td style="font-size:12px">{v["label"]}</td><td style="text-align:right;'
+                         f'color:{GREEN if z > 0.5 else RED if z < -0.5 else GREY}" class="mono">{z:+.2f}σ</td></tr>')
+            tilts = " · ".join(
+                f'{k}: <b style="color:{GREEN if t > 0.25 else RED if t < -0.25 else GREY}">{t:+.2f}</b>'
+                for k, t in mom["tilts"].items())
+            st.markdown(f'<table class="data-grid" style="width:100%"><thead><tr><th>Fundamental trend</th>'
+                        f'<th style="text-align:right">z</th></tr></thead><tbody>{rows}</tbody></table>'
+                        f'<div style="margin-top:6px;font-size:12px;color:{GREY}">Implied tilts — {tilts}</div>',
+                        unsafe_allow_html=True)
+            st.caption("Macro momentum (Brooks/AQR 2017; 'Economic Trend' 2024): 3–12m trends in fundamentals, "
+                       "standardised vs their own history, mapped to assets — equities like improving growth, easing "
+                       "policy, a softer USD and positive risk sentiment; duration likes the opposite. GDPNow/CFNAI "
+                       "revisions act as a model-based economic-surprise gauge.")
+
+
+def _fragility_section() -> None:
+    f = load_fragility()
+    if not f:
+        return
+    st.markdown(section_header("SYSTEMIC FRAGILITY — ABSORPTION RATIO & TURBULENCE"), unsafe_allow_html=True)
+    c = st.columns(4)
+    sh = f.get("ar_shift")
+    c[0].markdown(stat_card("Absorption ratio", f"{f['absorption']:.2f}",
+                            f"top {f['n_pc']} of {f['n_assets']} PCs", WHITE), unsafe_allow_html=True)
+    c[1].markdown(stat_card("AR shift (15d vs 1y)", f"{sh:+.2f}σ" if sh is not None else "—",
+                            "≥ +1σ = coupling rising fast", RED if (sh or 0) >= 1 else AMBER if (sh or 0) >= 0.5 else GREEN),
+                  unsafe_allow_html=True)
+    c[2].markdown(stat_card("Turbulence (20d avg)", f"{f['turb_20d']:.1f}",
+                            f"normal ≈ {f['turb_expected']} · {f['turb_20d_pct']:.0f}th pct",
+                            RED if f["turb_20d_pct"] >= 80 else AMBER if f["turb_20d_pct"] >= 60 else GREEN),
+                  unsafe_allow_html=True)
+    c[3].markdown(stat_card("Turbulence (today)", f"{f['turbulence']:.1f}", "Mahalanobis distance", WHITE),
+                  unsafe_allow_html=True)
+    h = f["history"].dropna()
+    fig = line_chart([{"x": h.index, "y": h["absorption"], "name": "Absorption ratio", "color": GOLD, "width": 1.5}],
+                     height=220, showlegend=False)
+    st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+    st.caption("State Street research. Absorption ratio (Kritzman, Li, Page & Rigobon 2011): share of cross-asset "
+               "variance captured by the top fifth of principal components across 15 assets — high and rising means "
+               "markets are tightly coupled and shocks spread fast (most major US drawdowns were preceded by spikes). "
+               "Turbulence (Kritzman & Li 2010): how unusual today's cross-asset moves are vs the past year.")
 
 
 def _prob_col(p: float | None) -> str:
