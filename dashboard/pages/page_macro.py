@@ -343,8 +343,10 @@ def _ensemble_box() -> str:
         return (f'<div style="display:flex;justify-content:space-between;padding:3px 0;'
                 f'border-bottom:1px solid #1e1e1e"><span style="color:{GREY};font-size:12px">{lbl}</span>'
                 f'<span style="color:{WHITE};font-size:12px">{_REGIME_SHORT.get(reg, reg or "—")}</span></div>')
-    status = ("all three models agree" if e.get("unanimous")
-              else f'{e.get("agreement")} agree — models split')
+    status = ("economic data & market prices agree" if e.get("unanimous")
+              else "data and prices split — nowcast leads" if e.get("split") else "one read available")
+    mp = e.get("model_prob")
+    model_lbl = f'{_REGIME_SHORT.get(e.get("model"), e.get("model") or "—")}' + (f" · {mp:.0f}%" if mp else "")
     s = e.get("stress") or {}
     stress_row = ""
     if s.get("state"):
@@ -363,7 +365,9 @@ def _ensemble_box() -> str:
         f'text-transform:uppercase;letter-spacing:1px">Regime ensemble</span>'
         f'<span style="color:{col};font-size:11px">{status}</span></div>'
         f'{chip("FRED nowcast", e.get("fred"))}{chip("ETF-momentum proxy", e.get("proxy"))}'
-        f'{chip("Probability model", e.get("model"))}'
+        f'<div style="display:flex;justify-content:space-between;padding:3px 0;color:{GREY};font-size:11px">'
+        f'<span>Nowcast confidence (prob. model — trained on the nowcast, not a vote)</span>'
+        f'<span>{model_lbl}</span></div>'
         f'<div style="margin-top:6px;color:{GOLD};font-size:12px">Consensus: '
         f'<b>{_REGIME_SHORT.get(e.get("consensus"), e.get("consensus"))}</b></div>{stress_row}</div>')
 

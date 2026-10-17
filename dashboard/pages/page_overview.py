@@ -13,8 +13,52 @@ from dashboard.components import (
 from dashboard.polaris import render_polaris_bar
 from dashboard.page_data import (
     load_metrics, load_signals, load_context_percentiles, load_backtest,
-    load_narrative, load_analogues, load_valuation, load_track_record,
+    load_narrative, load_analogues, load_valuation, load_track_record, load_long_validation,
 )
+
+_LV_NAMES = {
+    "compass": "MacroCompass", "compass_equal": "Compass (equal-weight)", "risk_score": "Risk-on/off",
+    "dim_equity_momentum": "· Equity momentum", "dim_volatility": "· Volatility",
+    "dim_credit": "· Credit", "dim_yield_curve": "· Yield curve", "dim_commodity": "· Commodity",
+    "dim_style": "· Style", "dim_regional": "· Regional",
+}
+
+
+def _long_validation_table() -> None:
+    lv = load_long_validation()
+    sigs, meta = lv.get("signals") or {}, lv.get("_meta") or {}
+    if not sigs:
+        return
+    def tcol(t):  # |t| ≥ 2 ≈ significant at 5%
+        return GREEN if abs(t) >= 2 else GREY
+    body = ""
+    for key, name in _LV_NAMES.items():
+        v = sigs.get(key)
+        if not v:
+            continue
+        r2 = v.get("oos_r2")
+        body += (f'<tr><td style="font-weight:600">{name}</td>'
+                 f'<td style="text-align:right;color:{tcol(v["t"])}" class="mono">{v["ic"]:+.2f} '
+                 f'<span style="color:{GREY};font-size:10px">t {v["t"]:+.1f}</span></td>'
+                 f'<td style="text-align:right;color:{GREEN if (r2 or 0) > 0 else GREY}" class="mono">'
+                 f'{"—" if r2 is None else f"{r2:+.2f}%"}</td>'
+                 f'<td style="text-align:right;color:{tcol(v["vol_t"])}" class="mono">{v["vol_ic"]:+.2f} '
+                 f'<span style="color:{GREY};font-size:10px">t {v["vol_t"]:+.1f}</span></td></tr>')
+    head = ("<tr><th>Signal</th><th style='text-align:right'>Return IC</th>"
+            "<th style='text-align:right'>OOS R² vs mean</th>"
+            "<th style='text-align:right'>Next-month vol IC</th></tr>")
+    st.markdown(f'<div style="color:{GOLD};font-size:11px;font-weight:600;letter-spacing:1px;'
+                f'margin:14px 0 6px 0">LONG SAMPLE — {meta.get("start")} → {meta.get("end")} · '
+                f'{meta.get("months")} NON-OVERLAPPING MONTHS</div>'
+                f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
+                f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
+    st.caption("Signals rebuilt at every month-end since 2007 with the live scoring code, graded on "
+               "non-overlapping 1-month S&P returns. OOS R² = Campbell–Thompson out-of-sample R² vs the "
+               "expanding historical mean (Welch–Goyal benchmark): ≤ 0 means no better than assuming the "
+               "average return. Green = |t| ≥ 2. Finding: the Compass does **not** forecast returns, but "
+               "strongly forecasts next-month volatility (negative IC = risk-on reading → calmer month) — "
+               "read it as a risk-state gauge, not a return call. Regenerate with "
+               "`python scripts/long_backtest.py`.")
 
 
 def _level(m, tk):
@@ -241,6 +285,7 @@ def render(ctx: dict) -> None:
                    f"(+ hit rate) after top- vs bottom-tercile readings. Point-in-time, but a ~15-month "
                    f"overlapping-window sample — read as an honest self-check, not a verdict. A negative "
                    f"IC means the signal has been contrarian over this window.")
+    _long_validation_table()
 
     # ── Historical analogues ───────────────────────────────────────────────
     an = load_analogues()

@@ -27,6 +27,12 @@ REGIMES = ["GOLDILOCKS", "REFLATION", "STAGFLATION", "DEFLATION RISK"]
 # How much weight the persistence prior gets vs today's emission read.
 _PERSIST = 0.35
 
+# Shrinkage prior: quadrant centres in (growth, inflation) score space, and how
+# many pseudo-observations they are worth.
+_CENTRE = {"GOLDILOCKS": (0.35, -0.35), "REFLATION": (0.35, 0.35),
+           "STAGFLATION": (-0.35, 0.35), "DEFLATION RISK": (-0.35, -0.35)}
+_PRIOR_N = 30
+
 
 def _history():
     ms = store.signal_history("macro_signals")
@@ -66,12 +72,15 @@ def regime_probabilities(growth: float | None = None, inflation: float | None = 
     for r in REGIMES:
         mask = labels == r
         n = int(mask.sum())
-        if n == 0:
-            continue
-        mu = X[mask].mean(axis=0)
-        v = np.clip(X[mask].var(axis=0), global_var * 0.5, None) if n > 2 else global_var
+        # Shrink each regime's Gaussian toward its quadrant centre with _PRIOR_N
+        # pseudo-observations: rare regimes (Goldilocks/Deflation have had ~10-25
+        # days) otherwise get an unstable mean/variance from a handful of points.
+        prior_mu = np.array(_CENTRE[r])
+        mu = (X[mask].sum(axis=0) + _PRIOR_N * prior_mu) / (n + _PRIOR_N)
+        v_hat = X[mask].var(axis=0) if n > 2 else global_var
+        v = np.clip((n * v_hat + _PRIOR_N * global_var) / (n + _PRIOR_N), global_var * 0.5, None)
         ll = -0.5 * np.sum((pt - mu) ** 2 / v + np.log(2 * np.pi * v))
-        logp[r] = ll + np.log(n)  # + log prior (regime frequency)
+        logp[r] = ll + np.log(n + 1)  # + log prior (regime frequency, Laplace-smoothed)
     if not logp:
         return {}
 

@@ -165,6 +165,18 @@ def load_track_record() -> dict:
     return signal_track_record()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_long_validation() -> dict:
+    """19-year out-of-sample grading written by scripts/long_backtest.py."""
+    import json
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "data" / "long_validation.json"
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def load_ensemble() -> dict:
     from data.ensemble import ensemble_regime

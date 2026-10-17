@@ -1,0 +1,122 @@
+{
+ "_meta": {
+  "start": "2007-05",
+  "end": "2026-09",
+  "months": 233,
+  "horizon": "1M non-overlapping",
+  "benchmark": "expanding historical mean (Welch\u2013Goyal)",
+  "generated": "2026-10-17"
+ },
+ "signals": {
+  "dim_equity_momentum": {
+   "ic": 0.024,
+   "t": 0.37,
+   "n": 233,
+   "oos_r2": -0.88,
+   "high_mean": 1.03,
+   "low_mean": 0.83,
+   "spread": 0.21,
+   "vol_ic": -0.253,
+   "vol_t": -3.97
+  },
+  "dim_style": {
+   "ic": 0.049,
+   "t": 0.75,
+   "n": 233,
+   "oos_r2": -0.01,
+   "high_mean": 1.15,
+   "low_mean": 0.81,
+   "spread": 0.33,
+   "vol_ic": -0.082,
+   "vol_t": -1.25
+  },
+  "dim_regional": {
+   "ic": -0.009,
+   "t": -0.13,
+   "n": 233,
+   "oos_r2": 0.0,
+   "high_mean": 0.84,
+   "low_mean": 1.0,
+   "spread": -0.16,
+   "vol_ic": -0.016,
+   "vol_t": -0.24
+  },
+  "dim_yield_curve": {
+   "ic": -0.059,
+   "t": -0.89,
+   "n": 233,
+   "oos_r2": -1.18,
+   "high_mean": 0.62,
+   "low_mean": 1.26,
+   "spread": -0.63,
+   "vol_ic": 0.108,
+   "vol_t": 1.65
+  },
+  "dim_credit": {
+   "ic": -0.044,
+   "t": -0.68,
+   "n": 233,
+   "oos_r2": 0.0,
+   "high_mean": 0.33,
+   "low_mean": 0.71,
+   "spread": -0.38,
+   "vol_ic": -0.061,
+   "vol_t": -0.94
+  },
+  "dim_commodity": {
+   "ic": -0.015,
+   "t": -0.22,
+   "n": 233,
+   "oos_r2": -2.07,
+   "high_mean": 0.85,
+   "low_mean": 0.23,
+   "spread": 0.62,
+   "vol_ic": -0.106,
+   "vol_t": -1.62
+  },
+  "dim_volatility": {
+   "ic": -0.077,
+   "t": -1.17,
+   "n": 233,
+   "oos_r2": -0.04,
+   "high_mean": -0.02,
+   "low_mean": 0.51,
+   "spread": -0.53,
+   "vol_ic": -0.178,
+   "vol_t": -2.75
+  },
+  "compass": {
+   "ic": -0.025,
+   "t": -0.37,
+   "n": 233,
+   "oos_r2": -0.08,
+   "high_mean": 1.12,
+   "low_mean": 1.21,
+   "spread": -0.09,
+   "vol_ic": -0.253,
+   "vol_t": -3.98
+  },
+  "compass_equal": {
+   "ic": -0.015,
+   "t": -0.22,
+   "n": 233,
+   "oos_r2": -0.24,
+   "high_mean": 1.18,
+   "low_mean": 0.95,
+   "spread": 0.22,
+   "vol_ic": -0.271,
+   "vol_t": -4.27
+  },
+  "risk_score": {
+   "ic": -0.035,
+   "t": -0.53,
+   "n": 233,
+   "oos_r2": -0.37,
+   "high_mean": 1.27,
+   "low_mean": 1.48,
+   "spread": -0.2,
+   "vol_ic": -0.133,
+   "vol_t": -2.04
+  }
+ }
+}
