@@ -141,6 +141,28 @@ def load_iv_skew(ticker: str = "SPY") -> dict:
     return _uncached_if_empty(_iv_skew_cached, ticker)
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _gamma_cached(ticker: str) -> dict:
+    from data.options import dealer_gamma
+    return dealer_gamma(ticker) or _raise_empty()
+
+
+def load_dealer_gamma(ticker: str = "SPY") -> dict:
+    return _uncached_if_empty(_gamma_cached, ticker)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_carry() -> list:
+    from data.carry import carry_panel
+    return carry_panel()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_trend() -> list:
+    from data.carry import trend_panel
+    return trend_panel()
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def load_regime_transitions() -> dict:
     from data.regime_model import regime_transitions

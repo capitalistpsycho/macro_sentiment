@@ -8,7 +8,7 @@ from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, AMBER, CARD, BORDER,
 from dashboard.components import mini_gauge, line_chart, stat_card, pct_color, fmt_pct, fmt_num
 from dashboard.page_data import (
     load_metrics, load_sentiment, load_put_call, load_crowding, load_iv_skew,
-    load_analyst_breadth, load_uncertainty,
+    load_analyst_breadth, load_uncertainty, load_dealer_gamma,
 )
 from data import store
 import pandas as pd
@@ -152,6 +152,24 @@ def render(ctx: dict) -> None:
                 f'(fear); extremes are contrarian.</div></div>', unsafe_allow_html=True)
     else:
         st.info("Live options data unavailable right now (yfinance) — check back during market hours.")
+    gx = load_dealer_gamma("SPY")
+    if gx:
+        pos = gx["gex_bn"] > 0
+        g1, g2, g3 = st.columns([1, 1, 2])
+        g1.markdown(stat_card("Dealer gamma (est.)", f"${gx['gex_bn']:+.2f}bn", "per 1% SPY move",
+                              GREEN if pos else RED), unsafe_allow_html=True)
+        flip = gx.get("flip")
+        g2.markdown(stat_card("Gamma flip", f"{flip:.0f}" if flip else "—",
+                              f"spot {gx['spot']:.0f}" + (f" · {(gx['spot'] / flip - 1) * 100:+.1f}% away"
+                                                          if flip else ""), WHITE), unsafe_allow_html=True)
+        g3.markdown(
+            f'<div style="background:{CARD};border:1px solid {GREEN if pos else RED};border-radius:8px;'
+            f'padding:14px 18px;height:100%"><div style="color:{GREEN if pos else RED};font-size:13px;'
+            f'font-weight:600">{gx["regime"].capitalize()}</div><div style="color:{GREY};font-size:11px;'
+            f'margin-top:6px">Black–Scholes gamma × open interest over the nearest {gx["expiries"]} SPY expiries, '
+            f'assuming dealers are long calls / short puts (vendor convention — open interest doesn\'t show who '
+            f'holds what). Short-gamma dealers hedge *with* the move; Baltussen et al. (JFE 2021) link this to S&P '
+            f'intraday momentum. Lowest-confidence gauge on the page.</div></div>', unsafe_allow_html=True)
 
     # ── Analyst-sentiment breadth ──────────────────────────────────────────
     ab = load_analyst_breadth()

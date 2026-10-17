@@ -96,6 +96,76 @@ def put_call(ticker: str = "SPY", expiries: int = 3) -> dict:
         return {}
 
 
+def _bs_gamma(S, K, T, iv, r=0.04):
+    import numpy as np
+    from scipy.stats import norm
+    d1 = (np.log(S / K) + (r + 0.5 * iv ** 2) * T) / (iv * np.sqrt(T))
+    return norm.pdf(d1) / (S * iv * np.sqrt(T))
+
+
+def dealer_gamma(ticker: str = "SPY", expiries: int = 6) -> dict:
+    """Estimated dealer gamma exposure (GEX) and the gamma-flip level.
+
+    Naive convention (vendor standard, an *assumption*): dealers are long the calls
+    and short the puts customers trade, so call gamma counts +, put gamma −.
+    GEX = Σ gamma × OI × 100 × S² × 1% — dollars of delta dealers must trade per
+    1% move. Positive = dealers hedge against moves (dampening); negative = with
+    them (amplifying) — Baltussen et al. (JFE 2021) find S&P intraday momentum
+    when dealers are short gamma. Open interest doesn't reveal who holds what, so
+    treat the sign as an estimate.
+    """
+    try:
+        import numpy as np
+        import pandas as pd
+        from datetime import datetime
+        import yfinance as yf
+        exps = _expiries(ticker)[:expiries]
+        if not exps:
+            return {}
+        spot = yf.Ticker(ticker).fast_info.get("last_price")
+        if not spot:  # Yahoo returns no live price off-hours/weekends -> last stored close
+            from data import store
+            s = store.series(ticker)
+            spot = float(s["close"].iloc[-1]) if not s.empty else None
+        if not spot:
+            return {}
+        spot = float(spot)
+        today = datetime.now()
+        legs = []
+        for e in exps:
+            T = max((datetime.strptime(e, "%Y-%m-%d") - today).days + 1, 1) / 365
+            ch = _chain(ticker, e)
+            for df, sign in ((ch.calls, 1.0), (ch.puts, -1.0)):
+                d = df[["strike", "impliedVolatility", "openInterest"]].dropna()
+                d = d[(d["impliedVolatility"] > 0.03) & (d["impliedVolatility"] < 2) & (d["openInterest"] > 0)]
+                legs.append(pd.DataFrame({"K": d["strike"], "iv": d["impliedVolatility"],
+                                          "oi": d["openInterest"] * sign, "T": T}))
+        L = pd.concat(legs)
+        if L.empty:
+            return {}
+        K, iv, oi, T = (L[c].to_numpy(float) for c in ("K", "iv", "oi", "T"))
+
+        def gex(S):
+            return float((_bs_gamma(S, K, T, iv) * oi * 100 * S * S * 0.01).sum())
+        total = gex(spot)
+        grid = np.linspace(spot * 0.85, spot * 1.15, 121)
+        prof = np.array([gex(s) for s in grid])
+        # Linear interpolation of each sign change -> the zero-gamma spot level.
+        flips = [grid[i] - prof[i] * (grid[i + 1] - grid[i]) / (prof[i + 1] - prof[i])
+                 for i in range(len(grid) - 1) if np.sign(prof[i]) != np.sign(prof[i + 1])]
+        flip = min(flips, key=lambda x: abs(x - spot)) if flips else None
+        return {
+            "ticker": ticker, "spot": round(spot, 2), "gex_bn": round(total / 1e9, 2),
+            "flip": round(float(flip), 1) if flip is not None else None,
+            "regime": "positive gamma — dealers dampen moves" if total > 0
+                      else "negative gamma — dealers amplify moves",
+            "expiries": len(exps),
+        }
+    except Exception as exc:
+        _log_failure("dealer_gamma", ticker, exc)
+        return {}
+
+
 def iv_skew(ticker: str = "SPY") -> dict:
     """Downside IV skew: implied vol of a ~10% OTM put minus a ~10% OTM call.
 

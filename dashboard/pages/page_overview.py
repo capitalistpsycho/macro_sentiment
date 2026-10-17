@@ -294,20 +294,27 @@ def render(ctx: dict) -> None:
                     unsafe_allow_html=True)
         head = ("<tr><th>Analogue date</th><th style='text-align:right'>Similarity</th>"
                 "<th>Regime then</th><th style='text-align:right'>S&P next month</th></tr>")
-        body = ""
-        for a in an["analogues"]:
-            fwd = a.get("spy_fwd")
-            body += (f'<tr><td class="mono" style="color:{GOLD}">{a["date"]}</td>'
-                     f'<td style="text-align:right" class="mono">{a.get("similarity",0):.0f}%</td>'
-                     f'<td style="color:{WHITE}">{a.get("regime","—")}</td>'
-                     f'<td style="text-align:right;color:{pct_color(fwd)}" class="mono">{fmt_pct(fwd)}</td></tr>')
+        def an_rows(items, col):
+            body = ""
+            for a in items:
+                fwd = a.get("spy_fwd")
+                body += (f'<tr><td class="mono" style="color:{col}">{a["date"]}</td>'
+                         f'<td style="text-align:right" class="mono">{a.get("similarity",0):.0f}%</td>'
+                         f'<td style="color:{WHITE}">{a.get("regime","—")}</td>'
+                         f'<td style="text-align:right;color:{pct_color(fwd)}" class="mono">{fmt_pct(fwd)}</td></tr>')
+            return body
+        body = an_rows(an["analogues"], GOLD)
+        if an.get("anti"):
+            body += (f'<tr><td colspan="4" style="color:{GREY};font-size:10px;letter-spacing:1px;'
+                     f'padding-top:8px">ANTI-ANALOGUES — LEAST LIKE TODAY</td></tr>' + an_rows(an["anti"], GREY))
         st.markdown(f'<table class="data-grid" style="width:100%"><thead>{head}</thead>'
                     f'<tbody>{body}</tbody></table>', unsafe_allow_html=True)
-        avg = an.get("avg_fwd")
+        avg, anti = an.get("avg_fwd"), an.get("anti_avg_fwd")
         st.caption(f"Nearest neighbours to today's standardized macro state (growth/inflation scores, "
-                   f"risk, breadth, VIX, curve, credit) over the signal history, excluding the last "
-                   f"quarter. Similar states saw the S&P {fmt_pct(avg)} on average over the next month "
-                   f"— an analogue read, not a forecast.")
+                   f"risk, breadth, VIX, curve, credit, stock–bond correlation) over the signal history, "
+                   f"excluding the last quarter. Similar states saw the S&P {fmt_pct(avg)} on average over "
+                   f"the next month; the least-similar states saw {fmt_pct(anti)} (Man AHL / Harvey 2025 "
+                   f"regime & anti-regime approach) — an analogue read, not a forecast.")
 
     # ── Strategic valuation (long-run expected return) ─────────────────────
     val = load_valuation()

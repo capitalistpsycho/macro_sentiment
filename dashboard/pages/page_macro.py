@@ -15,7 +15,7 @@ from dashboard.page_data import (
     load_correlation, load_regime_transitions, load_allocation, load_rate_paths,
     load_ensemble, load_wk_history, load_recession_risk, load_growth_at_risk,
     load_term_premium, load_net_liquidity, load_inflation_nowcast, load_macro_momentum,
-    load_fragility,
+    load_fragility, load_carry, load_trend,
 )
 from data import store, fixed_income as fi
 
@@ -308,6 +308,57 @@ def render(ctx: dict) -> None:
     # ── Regime → positioning (transitions, All-Weather tilts, vol target) ───
     if sig.get("macro_source") == "FRED":
         _regime_positioning_section()
+
+    # ── Cross-asset carry & trend ──────────────────────────────────────────
+    _carry_trend_section()
+
+
+def _carry_trend_section() -> None:
+    carry, trend = load_carry(), load_trend()
+    if not carry and not trend:
+        return
+    st.markdown(section_header("CROSS-ASSET CARRY & TREND"), unsafe_allow_html=True)
+    a, b = st.columns([1, 1.3])
+    with a:
+        if carry:
+            body = "".join(
+                f'<tr><td style="font-weight:600">{r["asset"]}<div style="color:{GREY};font-size:10px">'
+                f'{r["detail"]}</div></td>'
+                f'<td style="text-align:right;color:{pct_color(r["carry"])}" class="mono">{r["carry"]:+.2f}</td>'
+                f'<td style="text-align:right;color:{pct_color(r["roll"])}" class="mono">{r["roll"]:+.2f}</td>'
+                f'<td style="text-align:right;color:{pct_color(r["total"])};font-weight:600" class="mono">'
+                f'{r["total"]:+.2f}%</td></tr>' for r in carry)
+            st.markdown(f'<table class="data-grid" style="width:100%"><thead><tr><th>Carry (ann.)</th>'
+                        f'<th style="text-align:right">Carry</th><th style="text-align:right">Roll</th>'
+                        f'<th style="text-align:right">Total</th></tr></thead><tbody>{body}</tbody></table>',
+                        unsafe_allow_html=True)
+            st.caption("Carry = what the position earns if prices don't move (Koijen, Moskowitz, Pedersen & Vrugt, "
+                       "JFE 2018 — predicts returns in every asset class, distinct from value/momentum; carry trades "
+                       "crash together in recessions). Bond roll-down is a duration × curve-slope estimate. "
+                       "Commodity carry needs futures-curve data (not available).")
+    with b:
+        if trend:
+            body = ""
+            for r in trend:
+                p = r["position"]
+                bar = (f'<div style="background:#1e1e1e;height:6px;border-radius:3px;position:relative">'
+                       f'<div style="position:absolute;{"left:50%" if p >= 0 else f"right:50%"};'
+                       f'width:{min(abs(p), 2) / 2 * 50:.0f}%;height:6px;border-radius:3px;'
+                       f'background:{GREEN if p >= 0 else RED}"></div></div>')
+                body += (f'<tr><td>{r["asset"]}</td>'
+                         f'<td style="text-align:right;color:{pct_color(r["r12_1"])}" class="mono">{r["r12_1"]:+.1f}%</td>'
+                         f'<td style="text-align:right" class="mono">{r["blend"]:+.2f}</td>'
+                         f'<td style="text-align:right;color:{GREY}" class="mono">{r["vol"]:.0f}%</td>'
+                         f'<td style="width:28%">{bar}</td>'
+                         f'<td style="text-align:right" class="mono">{p:+.2f}×</td></tr>')
+            st.markdown(f'<table class="data-grid" style="width:100%"><thead><tr><th>Trend</th>'
+                        f'<th style="text-align:right">12-1m</th><th style="text-align:right">1/3/12 blend</th>'
+                        f'<th style="text-align:right">Vol</th><th></th><th style="text-align:right">10%-vol pos.</th>'
+                        f'</tr></thead><tbody>{body}</tbody></table>', unsafe_allow_html=True)
+            st.caption("Time-series momentum (Moskowitz, Ooi & Pedersen 2012; Hurst, Ooi & Pedersen, a century of "
+                       "evidence): blend = average sign of 1/3/12-month returns; position = blend × 10% target vol ÷ "
+                       "63-day realized vol, capped at 2×. Caveat: much of TSMOM's historical alpha comes from the "
+                       "vol scaling itself (Kim, Tse & Wald).")
 
 
 def _nowcast_section() -> None:
