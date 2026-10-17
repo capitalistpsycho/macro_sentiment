@@ -177,6 +177,36 @@ def load_long_validation() -> dict:
         return {}
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_recession_risk() -> dict:
+    from data.macro_risk import recession_risk
+    return recession_risk()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_growth_at_risk() -> dict:
+    from data.macro_risk import growth_at_risk
+    return growth_at_risk()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_term_premium() -> dict:
+    from data.macro_risk import term_premium
+    return term_premium()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_net_liquidity() -> dict:
+    from data.macro_risk import net_liquidity
+    return net_liquidity()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_uncertainty() -> dict:
+    from data.macro_risk import uncertainty
+    return uncertainty()
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def load_ensemble() -> dict:
     from data.ensemble import ensemble_regime

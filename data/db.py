@@ -139,6 +139,16 @@ def init_db() -> None:
             PRIMARY KEY (ticker, date)
         );
 
+        -- Full-history macro series for the long-sample models (recession probit,
+        -- growth-at-risk, liquidity, uncertainty). Separate from fred_series so the
+        -- existing ~6y percentile reads keep their meaning.
+        CREATE TABLE IF NOT EXISTS fred_long (
+            series_id  TEXT NOT NULL,
+            date       TEXT NOT NULL,
+            value      REAL,
+            PRIMARY KEY (series_id, date)
+        );
+
         CREATE TABLE IF NOT EXISTS pm_journal (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             ts        TEXT,
@@ -205,6 +215,16 @@ def upsert_long_closes(rows: list[tuple]) -> int:
         return 0
     with get_db() as c:
         c.executemany("INSERT OR REPLACE INTO long_closes (ticker, date, close) "
+                      "VALUES (?,?,?)", rows)
+    return len(rows)
+
+
+def upsert_fred_long(rows: list[tuple]) -> int:
+    """rows: (series_id, date, value)."""
+    if not rows:
+        return 0
+    with get_db() as c:
+        c.executemany("INSERT OR REPLACE INTO fred_long (series_id, date, value) "
                       "VALUES (?,?,?)", rows)
     return len(rows)
 

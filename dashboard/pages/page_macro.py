@@ -13,7 +13,8 @@ from dashboard.page_data import (
     load_metrics, load_signals, load_calendar, load_financial_stress,
     load_treasury_curve, load_rates_extras, load_boc, load_regime_probs, load_gs_fci,
     load_correlation, load_regime_transitions, load_allocation, load_rate_paths,
-    load_ensemble, load_wk_history,
+    load_ensemble, load_wk_history, load_recession_risk, load_growth_at_risk,
+    load_term_premium, load_net_liquidity,
 )
 from data import store, fixed_income as fi
 
@@ -291,9 +292,127 @@ def render(ctx: dict) -> None:
     # ── Market state — WK-means stress intensity ───────────────────────────
     _wk_section()
 
+    # ── Downside risk: recession probability + growth-at-risk ──────────────
+    _recession_gar_section()
+
+    # ── Rates plumbing: term premium + net liquidity ───────────────────────
+    _plumbing_section()
+
     # ── Regime → positioning (transitions, All-Weather tilts, vol target) ───
     if sig.get("macro_source") == "FRED":
         _regime_positioning_section()
+
+
+def _prob_col(p: float | None) -> str:
+    if p is None:
+        return GREY
+    return RED if p >= 40 else AMBER if p >= 20 else GREEN
+
+
+def _fan_html(q: dict, unit: str = "%") -> str:
+    """5/25/50/75/95 quantile strip as a compact horizontal fan."""
+    lo, hi = q["q5"], q["q95"]
+    span = (hi - lo) or 1.0
+    def x(v):
+        return (v - lo) / span * 100
+    return (f'<div style="position:relative;height:26px;margin:6px 0 2px 0">'
+            f'<div style="position:absolute;top:10px;left:0;right:0;height:6px;background:#1e1e1e;border-radius:3px"></div>'
+            f'<div style="position:absolute;top:10px;left:{x(q["q25"]):.0f}%;width:{x(q["q75"]) - x(q["q25"]):.0f}%;'
+            f'height:6px;background:{GOLD};opacity:.55;border-radius:3px"></div>'
+            f'<div style="position:absolute;top:4px;left:calc({x(q["q50"]):.0f}% - 1px);width:2px;height:18px;background:{WHITE}"></div>'
+            f'</div><div style="display:flex;justify-content:space-between;font-size:11px;color:{GREY}" class="mono">'
+            f'<span style="color:{RED}">5th {q["q5"]:+.1f}{unit}</span><span>median {q["q50"]:+.1f}{unit}</span>'
+            f'<span style="color:{GREEN}">95th {q["q95"]:+.1f}{unit}</span></div>')
+
+
+def _recession_gar_section() -> None:
+    rr, gar = load_recession_risk(), load_growth_at_risk()
+    if not rr and not gar:
+        return
+    st.markdown(section_header("DOWNSIDE RISK — RECESSION PROBABILITY & GROWTH-AT-RISK"),
+                unsafe_allow_html=True)
+    if rr:
+        c = st.columns(4)
+        p = rr.get("curve_prob")
+        c[0].markdown(stat_card("Curve probit (12m)", f"{p:.0f}%" if p is not None else "—",
+                                f"10Y−3M {rr.get('curve_spread', 0):+.2f} · fit since {rr.get('curve_since')}",
+                                _prob_col(p)), unsafe_allow_html=True)
+        p = rr.get("curve_ebp_prob")
+        c[1].markdown(stat_card("Curve + EBP probit", f"{p:.0f}%" if p is not None else "—",
+                                f"EBP {rr.get('ebp', 0):+.2f} ({rr.get('ebp_month', '—')})", _prob_col(p)),
+                      unsafe_allow_html=True)
+        p = rr.get("fed_ebp_prob")
+        c[2].markdown(stat_card("Fed Board EBP model", f"{p:.0f}%" if p is not None else "—",
+                                "Favara–Gilchrist–Lewis–Zakrajšek", _prob_col(p)), unsafe_allow_html=True)
+        sv = rr.get("sahm")
+        c[3].markdown(stat_card("Sahm rule (real-time)", f"{sv:.2f}" if sv is not None else "—",
+                                "TRIGGERED (≥0.50)" if rr.get("sahm_triggered") else "not triggered (<0.50)",
+                                RED if rr.get("sahm_triggered") else GREEN), unsafe_allow_html=True)
+        st.caption("Probability of an NBER recession starting within 12 months. The curve probit is the NY Fed "
+                   "/ Estrella–Mishkin model re-fit on 1982+ data; adding the Excess Bond Premium (credit-market "
+                   "risk appetite, Gilchrist–Zakrajšek) is the pairing a 2019 Fed Board staff study found best "
+                   "out-of-sample. Sahm = 3m-avg unemployment vs its 12m low — a coincident confirmation, not a lead.")
+    if gar.get("gdp") or gar.get("spx"):
+        g1, g2 = st.columns(2)
+        for col, key, title, unc in (
+                (g1, "gdp", "Next-year real GDP growth", f'unconditional median {gar.get("gdp_median_unconditional", 0):+.1f}%'),
+                (g2, "spx", "Next-12m S&P 500 return", f'unconditional 5th pct {gar.get("spx_q5_unconditional", 0):+.1f}%')):
+            q = gar.get(key)
+            if not q:
+                continue
+            col.markdown(
+                f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:8px;padding:12px 16px">'
+                f'<div style="color:{GOLD};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px">'
+                f'Growth-at-Risk — {title}</div>{_fan_html(q)}'
+                f'<div style="color:{GREY};font-size:11px;margin-top:4px">Given NFCI {gar["nfci"]:+.2f} '
+                f'({gar["nfci_date"]}) · {unc} · n={q["n"]} since {q["since"]}</div></div>',
+                unsafe_allow_html=True)
+        st.caption("Quantile regressions (Adrian, Boyarchenko & Giannone, AER 2019): the distribution of next-year "
+                   "outcomes conditional on today's Chicago Fed NFCI (GDP model also conditions on trailing growth). "
+                   "Tighter conditions drag the 5th percentile down far more than the median — the bar shows the "
+                   "5–95% range, gold = 25–75%, white = median.")
+
+
+def _plumbing_section() -> None:
+    tp, nl = load_term_premium(), load_net_liquidity()
+    if not tp and not nl:
+        return
+    st.markdown(section_header("RATES PLUMBING — TERM PREMIUM & FED NET LIQUIDITY"), unsafe_allow_html=True)
+    a, b = st.columns(2)
+    with a:
+        if tp:
+            c = st.columns(3)
+            c[0].markdown(stat_card("10Y term premium", f"{tp['tp10']:.2f}%",
+                                    f"{tp['pct']:.0f}th pct since {tp['since']}", WHITE), unsafe_allow_html=True)
+            ch = tp.get("chg_1m")
+            c[1].markdown(stat_card("1-month change", f"{ch:+.2f}" if ch is not None else "—", "pp",
+                                    RED if (ch or 0) > 0 else GREEN), unsafe_allow_html=True)
+            c[2].markdown(stat_card("Expected-path part", f"{tp.get('expected_path', 0):.2f}%",
+                                    f"of the {tp.get('y10', 0):.2f}% 10Y", WHITE), unsafe_allow_html=True)
+            h = tp["history"].loc[tp["history"].index[-1] - pd.DateOffset(years=10):]
+            fig = line_chart([{"x": h.index, "y": h.values, "name": "Term premium", "color": GOLD, "width": 1.5}],
+                             height=220, showlegend=False, hlines=[{"y": 0, "label": "0", "color": GREY}])
+            st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+            st.caption("Kim–Wright (Fed Board) 10-year term premium: the extra yield for holding duration over rolling "
+                       "short bills. Rising = bond risk premium rebuilding (a headwind for long-duration assets). "
+                       "Expected path = 10Y yield − term premium.")
+    with b:
+        if nl:
+            c = st.columns(3)
+            c[0].markdown(stat_card("Net liquidity", f"${nl['net'] / 1000:.2f}T",
+                                    f"as of {nl['as_of']}", WHITE), unsafe_allow_html=True)
+            for i, (lbl, k) in enumerate((("4-week change", "chg_4w"), ("13-week change", "chg_13w")), start=1):
+                v = nl.get(k)
+                c[i].markdown(stat_card(lbl, f"{v:+,.0f}bn" if v is not None else "—", "",
+                                        GREEN if (v or 0) > 0 else RED), unsafe_allow_html=True)
+            h = nl["history"].loc[nl["history"].index[-1] - pd.DateOffset(years=5):] / 1000
+            fig = line_chart([{"x": h.index, "y": h.values, "name": "Net liquidity ($T)", "color": GOLD,
+                               "width": 1.5}], height=220, showlegend=False)
+            st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+            st.caption(f"Fed total assets ${nl['fed_assets'] / 1000:.2f}T − Treasury General Account "
+                       f"${nl['tga']:,.0f}bn − ON reverse repo ${nl['rrp']:,.0f}bn; bank reserves "
+                       f"${(nl.get('reserves') or 0) / 1000:.2f}T. A widely watched practitioner heuristic for "
+                       f"cash available to risk markets — its predictive power is debated; read alongside reserves.")
 
 
 def _wk_section() -> None:

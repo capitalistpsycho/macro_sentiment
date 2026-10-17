@@ -8,9 +8,10 @@ from dashboard.styles import GOLD, WHITE, GREY, GREEN, RED, AMBER, CARD, BORDER,
 from dashboard.components import mini_gauge, line_chart, stat_card, pct_color, fmt_pct, fmt_num
 from dashboard.page_data import (
     load_metrics, load_sentiment, load_put_call, load_crowding, load_iv_skew,
-    load_analyst_breadth,
+    load_analyst_breadth, load_uncertainty,
 )
 from data import store
+import pandas as pd
 
 FG_ZONES = [
     (0, 25,  "rgba(239,68,68,0.55)"),
@@ -238,3 +239,32 @@ def render(ctx: dict) -> None:
     else:
         st.info("Positioning data unavailable — run `python run_macro.py --full` to fetch the "
                 "latest CFTC Commitment of Traders report.")
+
+    _uncertainty_section()
+
+
+def _uncertainty_section() -> None:
+    u = load_uncertainty()
+    if not u:
+        return
+    st.markdown(section_header("UNCERTAINTY & NEWS — POLICY, GEOPOLITICS, SENTIMENT"),
+                unsafe_allow_html=True)
+    cols = st.columns(len(u))
+    for col, (key, v) in zip(cols, u.items()):
+        hi_bad = key != "news"  # high EPU/GPR = stress; high news sentiment = good
+        p = v["pct"]
+        c = (RED if p >= 80 else AMBER if p >= 60 else GREEN) if hi_bad else \
+            (GREEN if p >= 60 else AMBER if p >= 40 else RED)
+        val = f'{v["value"]:+.2f}' if key == "news" else f'{v["value"]:.0f}'
+        with col:
+            st.markdown(stat_card(v["label"] + " (7d avg)", val,
+                                  f'{p:.0f}th pct since {v["since"]} · {v["as_of"]}', c),
+                        unsafe_allow_html=True)
+            h = v["history"].loc[v["history"].index[-1] - pd.DateOffset(years=3):]
+            fig = line_chart([{"x": h.index, "y": h.values, "name": v["label"], "color": GOLD,
+                               "width": 1.2}], height=170, showlegend=False)
+            st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+    st.caption("Newspaper-text indexes: Economic Policy Uncertainty (Baker–Bloom–Davis), Geopolitical Risk "
+               "(Caldara–Iacoviello) and the SF Fed Daily News Sentiment index. Research ties EPU and GPR mainly "
+               "to higher volatility and weaker investment, and news sentiment forecasts returns poorly "
+               "out-of-sample — read these as risk/volatility context, not return signals.")

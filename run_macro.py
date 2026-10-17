@@ -49,6 +49,15 @@ def main() -> int:
     except Exception as exc:
         log.warning("Long history refresh failed (continuing): %s", exc)
 
+    # 1a'. Full-history macro inputs (recession probit, GaR, liquidity, uncertainty)
+    try:
+        from data.macro_risk import refresh_long
+        lstats = refresh_long()
+        log.info("Long macro: %d series, %d rows (missing: %s).", lstats["series"],
+                 lstats["rows"], ", ".join(lstats["missing"]) or "none")
+    except Exception as exc:
+        log.warning("Long macro refresh failed (continuing): %s", exc)
+
     # 1b. FRED macro data (growth, inflation, financial conditions)
     try:
         from data.fred import refresh_fred
