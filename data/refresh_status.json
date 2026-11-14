@@ -1,12 +1,12 @@
 {
-  "refreshed_at": "2026-11-13T02:48:05Z",
+  "refreshed_at": "2026-11-14T02:36:48Z",
   "keys_present": {
     "FRED_API_KEY": false,
     "FMP_API_KEY": false
   },
   "coverage": {
     "prices": {
-      "rows": 59062,
+      "rows": 59158,
       "latest": "2026-11-13"
     },
     "fred": {
@@ -18,8 +18,8 @@
       "latest": "2026-10-15"
     },
     "boc": {
-      "rows": 9495,
-      "latest": "2026-11-12"
+      "rows": 9501,
+      "latest": "2026-11-13"
     },
     "signals": {
       "rows": 425,
